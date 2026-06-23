@@ -1,0 +1,267 @@
+package com.neusoft.cloudbrain.patient.service;
+
+import com.neusoft.cloudbrain.auth.entity.Role;
+import com.neusoft.cloudbrain.auth.entity.UserAccount;
+import com.neusoft.cloudbrain.auth.repository.RoleRepository;
+import com.neusoft.cloudbrain.auth.repository.UserAccountRepository;
+import com.neusoft.cloudbrain.patient.dto.*;
+import com.neusoft.cloudbrain.patient.entity.Patient;
+import com.neusoft.cloudbrain.patient.entity.PatientProfile;
+import com.neusoft.cloudbrain.patient.repository.PatientProfileRepository;
+import com.neusoft.cloudbrain.patient.repository.PatientRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+/**
+ * 患者 Service
+ *
+ * 功能：
+ * - 患者注册建档
+ * - 查看和修改本人信息
+ * - 管理员按编号、姓名、手机号查询
+ * - 维护过敏史、既往史等扩展信息
+ *
+ * 权限规则：
+ * - 患者只能访问和修改自己的数据
+ * - 医生只能在接诊关系成立时查看患者必要信息
+ */
+@Service
+@RequiredArgsConstructor
+public class PatientService {
+
+    private final PatientRepository patientRepository;
+    private final PatientProfileRepository patientProfileRepository;
+    private final UserAccountRepository userAccountRepository;
+    private final RoleRepository roleRepository;
+    private final PasswordEncoder passwordEncoder;
+
+    /**
+     * 患者注册
+     */
+    @Transactional
+    public PatientResponse register(PatientRegisterRequest request) {
+        // 检查用户名唯一性
+        if (userAccountRepository.findByUsername(request.username()).isPresent()) {
+            throw new IllegalArgumentException("USER_USERNAME_DUPLICATED:用户名已存在");
+        }
+
+        // 创建用户账号
+        LocalDateTime now = LocalDateTime.now();
+        UserAccount userAccount = UserAccount.builder()
+                .username(request.username())
+                .passwordHash(passwordEncoder.encode(request.password()))
+                .enabled(true)
+                .accountNonLocked(true)
+                .accountNonExpired(true)
+                .credentialsNonExpired(true)
+                .mustChangePassword(false)
+                .failedLoginAttempts(0)
+                .tokenVersion(0L)
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
+
+        // 分配患者角色
+        Role patientRole = roleRepository.findByName("PATIENT")
+                .orElseThrow(() -> new IllegalStateException("SYSTEM_INTERNAL_ERROR:患者角色未初始化"));
+        userAccount.setRoles(Set.of(patientRole));
+
+        userAccount = userAccountRepository.save(userAccount);
+
+        // 创建患者
+        Patient patient = Patient.builder()
+                .userId(userAccount.getId())
+                .name(request.name())
+                .gender(request.gender())
+                .birthDate(request.birthDate())
+                .phone(request.phone())
+                .status("ACTIVE")
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
+
+        patient = patientRepository.save(patient);
+
+        // 创建空档案
+        PatientProfile profile = PatientProfile.builder()
+                .patientId(patient.getId())
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
+        patientProfileRepository.save(profile);
+
+        return toResponse(patient);
+    }
+
+    /**
+     * 获取当前登录患者信息
+     */
+    @Transactional(readOnly = true)
+    public PatientResponse getCurrentPatient(Long userId) {
+        Patient patient = patientRepository.findByUserId(userId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "PATIENT_NOT_FOUND:患者信息不存在"));
+        return toResponse(patient);
+    }
+
+    /**
+     * 获取患者详情（含权限校验）
+     */
+    @Transactional(readOnly = true)
+    public PatientResponse getPatientById(Long id, Long currentUserId, Set<String> currentRoles) {
+        Patient patient = patientRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "PATIENT_NOT_FOUND:患者不存在"));
+
+        // 权限校验：患者只能查看自己的信息
+        if (currentRoles.contains("PATIENT") && !currentRoles.contains("ADMIN")
+                && !currentRoles.contains("DOCTOR")) {
+            if (!patient.getUserId().equals(currentUserId)) {
+                throw new SecurityException("PERMISSION_DENIED:无权访问他人患者信息");
+            }
+        }
+
+        return toResponse(patient);
+    }
+
+    /**
+     * 更新患者信息（患者只能更新自己的信息）
+     */
+    @Transactional
+    public PatientResponse updatePatient(Long id, PatientUpdateRequest request, Long currentUserId) {
+        Patient patient = patientRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "PATIENT_NOT_FOUND:患者不存在"));
+
+        // 权限校验：患者只能更新自己的信息
+        if (!patient.getUserId().equals(currentUserId)) {
+            throw new SecurityException("PERMISSION_DENIED:无权修改他人患者信息");
+        }
+
+        patient.setName(request.name());
+        patient.setGender(request.gender());
+        patient.setBirthDate(request.birthDate());
+        patient.setPhone(request.phone());
+        patient.setUpdatedAt(LocalDateTime.now());
+
+        patient = patientRepository.save(patient);
+        return toResponse(patient);
+    }
+
+    /**
+     * 获取患者档案
+     */
+    @Transactional(readOnly = true)
+    public PatientProfileResponse getPatientProfile(Long patientId, Long currentUserId, Set<String> currentRoles) {
+        Patient patient = patientRepository.findById(patientId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "PATIENT_NOT_FOUND:患者不存在"));
+
+        // 权限校验：患者只能查看自己的档案
+        if (currentRoles.contains("PATIENT") && !currentRoles.contains("ADMIN")
+                && !currentRoles.contains("DOCTOR")) {
+            if (!patient.getUserId().equals(currentUserId)) {
+                throw new SecurityException("PERMISSION_DENIED:无权访问他人患者档案");
+            }
+        }
+
+        PatientProfile profile = patientProfileRepository.findByPatientId(patientId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "PATIENT_PROFILE_NOT_FOUND:患者档案不存在"));
+
+        return toProfileResponse(profile);
+    }
+
+    /**
+     * 更新患者档案（患者只能更新自己的档案）
+     */
+    @Transactional
+    public PatientProfileResponse updatePatientProfile(
+            Long patientId, PatientProfileUpdateRequest request, Long currentUserId) {
+        Patient patient = patientRepository.findById(patientId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "PATIENT_NOT_FOUND:患者不存在"));
+
+        // 权限校验：患者只能更新自己的档案
+        if (!patient.getUserId().equals(currentUserId)) {
+            throw new SecurityException("PERMISSION_DENIED:无权修改他人患者档案");
+        }
+
+        PatientProfile profile = patientProfileRepository.findByPatientId(patientId)
+                .orElseGet(() -> PatientProfile.builder()
+                        .patientId(patientId)
+                        .createdAt(LocalDateTime.now())
+                        .build());
+
+        profile.setAddress(request.address());
+        profile.setEmergencyContact(request.emergencyContact());
+        profile.setEmergencyPhone(request.emergencyPhone());
+        profile.setAllergies(request.allergies());
+        profile.setMedicalHistory(request.medicalHistory());
+        profile.setUpdatedAt(LocalDateTime.now());
+
+        profile = patientProfileRepository.save(profile);
+        return toProfileResponse(profile);
+    }
+
+    /**
+     * 管理员按姓名查询患者
+     */
+    @Transactional(readOnly = true)
+    public List<PatientResponse> searchByName(String name) {
+        return patientRepository.findByName(name).stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 管理员按手机号查询患者
+     */
+    @Transactional(readOnly = true)
+    public List<PatientResponse> searchByPhone(String phone) {
+        return patientRepository.findByPhone(phone).stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 转换为响应 DTO
+     */
+    private PatientResponse toResponse(Patient patient) {
+        return new PatientResponse(
+                patient.getId(),
+                patient.getUserId(),
+                patient.getName(),
+                patient.getGender(),
+                patient.getBirthDate(),
+                patient.getPhone(),
+                patient.getStatus(),
+                patient.getCreatedAt(),
+                patient.getUpdatedAt()
+        );
+    }
+
+    /**
+     * 转换为档案响应 DTO
+     */
+    private PatientProfileResponse toProfileResponse(PatientProfile profile) {
+        return new PatientProfileResponse(
+                profile.getId(),
+                profile.getPatientId(),
+                profile.getAddress(),
+                profile.getEmergencyContact(),
+                profile.getEmergencyPhone(),
+                profile.getAllergies(),
+                profile.getMedicalHistory(),
+                profile.getCreatedAt(),
+                profile.getUpdatedAt()
+        );
+    }
+}
