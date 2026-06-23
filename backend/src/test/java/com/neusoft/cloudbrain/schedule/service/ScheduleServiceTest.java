@@ -2,6 +2,7 @@ package com.neusoft.cloudbrain.schedule.service;
 
 import com.neusoft.cloudbrain.appointment.entity.Appointment;
 import com.neusoft.cloudbrain.appointment.repository.AppointmentRepository;
+import com.neusoft.cloudbrain.common.exception.BusinessException;
 import com.neusoft.cloudbrain.department.entity.Department;
 import com.neusoft.cloudbrain.department.repository.DepartmentRepository;
 import com.neusoft.cloudbrain.doctor.entity.Doctor;
@@ -19,6 +20,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -29,7 +33,6 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
@@ -120,7 +123,7 @@ class ScheduleServiceTest {
     }
 
     @Test
-    @DisplayName("创建排班 - 医生不存在时抛出异常")
+    @DisplayName("创建排班 - 医生不存在时抛出 BusinessException(404)")
     void createSchedule_shouldThrowWhenDoctorNotFound() {
         ScheduleCreateRequest request = new ScheduleCreateRequest(
                 99L, 1L, LocalDate.now().plusDays(1),
@@ -131,12 +134,13 @@ class ScheduleServiceTest {
         when(doctorRepository.findById(99L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> scheduleService.createSchedule(request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("DOCTOR_NOT_FOUND");
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "DOCTOR_NOT_FOUND")
+                .hasFieldOrPropertyWithValue("httpStatus", 404);
     }
 
     @Test
-    @DisplayName("创建排班 - 医生已停用时抛出异常")
+    @DisplayName("创建排班 - 医生已停用时抛出 BusinessException(409)")
     void createSchedule_shouldThrowWhenDoctorDisabled() {
         testDoctor.setStatus("DISABLED");
         ScheduleCreateRequest request = new ScheduleCreateRequest(
@@ -148,12 +152,13 @@ class ScheduleServiceTest {
         when(doctorRepository.findById(1L)).thenReturn(Optional.of(testDoctor));
 
         assertThatThrownBy(() -> scheduleService.createSchedule(request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("DOCTOR_DISABLED");
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "DOCTOR_DISABLED")
+                .hasFieldOrPropertyWithValue("httpStatus", 409);
     }
 
     @Test
-    @DisplayName("创建排班 - 排班时间冲突时抛出异常")
+    @DisplayName("创建排班 - 排班时间冲突时抛出 BusinessException(409)")
     void createSchedule_shouldThrowWhenTimeConflict() {
         ScheduleCreateRequest request = new ScheduleCreateRequest(
                 1L, 1L, LocalDate.now().plusDays(1),
@@ -167,12 +172,13 @@ class ScheduleServiceTest {
                 .thenReturn(List.of(testSchedule));
 
         assertThatThrownBy(() -> scheduleService.createSchedule(request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("SCHEDULE_CONFLICT");
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "SCHEDULE_CONFLICT")
+                .hasFieldOrPropertyWithValue("httpStatus", 409);
     }
 
     @Test
-    @DisplayName("创建排班 - 开始时间晚于结束时间时抛出异常")
+    @DisplayName("创建排班 - 开始时间晚于结束时间时抛出 BusinessException(400)")
     void createSchedule_shouldThrowWhenStartTimeAfterEndTime() {
         ScheduleCreateRequest request = new ScheduleCreateRequest(
                 1L, 1L, LocalDate.now().plusDays(1),
@@ -184,8 +190,9 @@ class ScheduleServiceTest {
         when(departmentRepository.findById(1L)).thenReturn(Optional.of(testDepartment));
 
         assertThatThrownBy(() -> scheduleService.createSchedule(request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("VALIDATION_FAILED");
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "SCHEDULE_TIME_INVALID")
+                .hasFieldOrPropertyWithValue("httpStatus", 400);
     }
 
     @Test
@@ -237,8 +244,9 @@ class ScheduleServiceTest {
         ScheduleCancelRequest request = new ScheduleCancelRequest("测试取消");
 
         assertThatThrownBy(() -> scheduleService.cancelSchedule(1L, request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("SCHEDULE_CANCEL_CONFLICT");
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "SCHEDULE_CANCEL_CONFLICT")
+                .hasFieldOrPropertyWithValue("httpStatus", 409);
     }
 
     @Test
@@ -250,8 +258,9 @@ class ScheduleServiceTest {
         ScheduleCancelRequest request = new ScheduleCancelRequest("测试取消");
 
         assertThatThrownBy(() -> scheduleService.cancelSchedule(1L, request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("SCHEDULE_STATUS_CONFLICT");
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "SCHEDULE_STATUS_CONFLICT")
+                .hasFieldOrPropertyWithValue("httpStatus", 409);
     }
 
     @Test
@@ -266,8 +275,9 @@ class ScheduleServiceTest {
         when(scheduleRepository.findById(1L)).thenReturn(Optional.of(testSchedule));
 
         assertThatThrownBy(() -> scheduleService.updateSchedule(1L, request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("SCHEDULE_CAPACITY_CONFLICT");
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "SCHEDULE_CAPACITY_CONFLICT")
+                .hasFieldOrPropertyWithValue("httpStatus", 409);
     }
 
     @Test
@@ -285,13 +295,14 @@ class ScheduleServiceTest {
     }
 
     @Test
-    @DisplayName("获取排班详情 - 不存在时抛出异常")
+    @DisplayName("获取排班详情 - 不存在时抛出 BusinessException(404)")
     void getScheduleById_shouldThrowWhenNotExists() {
         when(scheduleRepository.findById(99L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> scheduleService.getScheduleById(99L))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("SCHEDULE_NOT_FOUND");
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "SCHEDULE_NOT_FOUND")
+                .hasFieldOrPropertyWithValue("httpStatus", 404);
     }
 
     @Test
@@ -308,5 +319,20 @@ class ScheduleServiceTest {
 
         assertThat(response.status()).isEqualTo("FULL");
         assertThat(response.remainingCount()).isEqualTo(0);
+    }
+
+    @Test
+    @DisplayName("按医生查询排班 - 返回分页结果")
+    void getSchedulesByDoctor_shouldReturnPagedResult() {
+        Pageable pageable = PageRequest.of(0, 10);
+        when(scheduleRepository.findByDoctorId(eq(1L), eq(pageable)))
+                .thenReturn(new PageImpl<>(List.of(testSchedule), pageable, 1));
+        when(doctorRepository.findById(1L)).thenReturn(Optional.of(testDoctor));
+        when(departmentRepository.findById(1L)).thenReturn(Optional.of(testDepartment));
+
+        var responses = scheduleService.getSchedulesByDoctor(1L, pageable);
+
+        assertThat(responses.getContent()).hasSize(1);
+        assertThat(responses.getTotalElements()).isEqualTo(1);
     }
 }

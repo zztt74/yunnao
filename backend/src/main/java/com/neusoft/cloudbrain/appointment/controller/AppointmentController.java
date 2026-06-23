@@ -7,6 +7,9 @@ import com.neusoft.cloudbrain.appointment.service.AppointmentService;
 import com.neusoft.cloudbrain.common.api.ApiResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -67,24 +70,30 @@ public class AppointmentController {
     }
 
     /**
-     * 查询患者挂号列表
+     * 查询患者挂号列表（分页）
      */
     @GetMapping("/patient/{patientId}")
-    public ApiResponse<List<AppointmentResponse>> getByPatient(
+    public ApiResponse<Page<AppointmentResponse>> getByPatient(
             @PathVariable Long patientId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
             HttpServletRequest httpRequest) {
-        List<AppointmentResponse> response = appointmentService.getAppointmentsByPatient(patientId);
+        Pageable pageable = PageRequest.of(page, size);
+        Page<AppointmentResponse> response = appointmentService.getAppointmentsByPatient(patientId, pageable);
         return ApiResponse.success(response, (String) httpRequest.getAttribute("traceId"));
     }
 
     /**
-     * 查询医生挂号列表
+     * 查询医生挂号列表（分页）
      */
     @GetMapping("/doctor/{doctorId}")
-    public ApiResponse<List<AppointmentResponse>> getByDoctor(
+    public ApiResponse<Page<AppointmentResponse>> getByDoctor(
             @PathVariable Long doctorId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
             HttpServletRequest httpRequest) {
-        List<AppointmentResponse> response = appointmentService.getAppointmentsByDoctor(doctorId);
+        Pageable pageable = PageRequest.of(page, size);
+        Page<AppointmentResponse> response = appointmentService.getAppointmentsByDoctor(doctorId, pageable);
         return ApiResponse.success(response, (String) httpRequest.getAttribute("traceId"));
     }
 

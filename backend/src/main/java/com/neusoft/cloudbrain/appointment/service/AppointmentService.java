@@ -4,7 +4,10 @@ import com.neusoft.cloudbrain.appointment.dto.AppointmentCancelRequest;
 import com.neusoft.cloudbrain.appointment.dto.AppointmentCreateRequest;
 import com.neusoft.cloudbrain.appointment.dto.AppointmentResponse;
 import com.neusoft.cloudbrain.appointment.entity.Appointment;
+import com.neusoft.cloudbrain.appointment.exception.AppointmentErrorCode;
 import com.neusoft.cloudbrain.appointment.repository.AppointmentRepository;
+import com.neusoft.cloudbrain.auth.dto.AuthPrincipal;
+import com.neusoft.cloudbrain.auth.security.SecurityUtils;
 import com.neusoft.cloudbrain.department.entity.Department;
 import com.neusoft.cloudbrain.department.repository.DepartmentRepository;
 import com.neusoft.cloudbrain.doctor.entity.Doctor;
@@ -14,6 +17,8 @@ import com.neusoft.cloudbrain.patient.repository.PatientRepository;
 import com.neusoft.cloudbrain.schedule.entity.Schedule;
 import com.neusoft.cloudbrain.schedule.repository.ScheduleRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -64,43 +69,39 @@ public class AppointmentService {
     public AppointmentResponse createAppointment(AppointmentCreateRequest request) {
         // 1. 检查患者存在且活跃
         Patient patient = patientRepository.findById(request.patientId())
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "PATIENT_NOT_FOUND:患者不存在"));
+                .orElseThrow(AppointmentErrorCode.PATIENT_NOT_FOUND::toException);
         if (!"ACTIVE".equals(patient.getStatus())) {
-            throw new IllegalArgumentException(
-                    "PATIENT_INACTIVE:患者账号已停用");
+            throw AppointmentErrorCode.APPOINTMENT_STATUS_CONFLICT.toException();
         }
+
+        // 患者只能为自己挂号
+        checkPatientOwnership(request.patientId());
 
         // 2. 检查排班存在
         Schedule schedule = scheduleRepository.findById(request.scheduleId())
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "SCHEDULE_NOT_FOUND:排班不存在"));
+                .orElseThrow(AppointmentErrorCode.SCHEDULE_NOT_FOUND::toException);
 
         // 3. 检查排班是否已取消
         if ("CANCELLED".equals(schedule.getStatus())) {
-            throw new IllegalArgumentException(
-                    "SCHEDULE_CANCELLED:排班已取消");
+            throw AppointmentErrorCode.APPOINTMENT_SCHEDULE_NOT_AVAILABLE.toException();
         }
 
         // 4. 检查排班是否已过期
         LocalDateTime now = LocalDateTime.now();
         if (schedule.getEndTime().isBefore(now)) {
-            throw new IllegalArgumentException(
-                    "SCHEDULE_EXPIRED:排班已过期");
+            throw AppointmentErrorCode.APPOINTMENT_SCHEDULE_NOT_AVAILABLE.toException();
         }
 
         // 5. 检查重复预约（同一患者同一排班不能重复挂号）
         if (appointmentRepository.existsByPatientIdAndScheduleIdAndStatusNot(
                 request.patientId(), request.scheduleId(), "CANCELLED")) {
-            throw new IllegalArgumentException(
-                    "APPOINTMENT_DUPLICATED:同一患者不能重复预约同一排班");
+            throw AppointmentErrorCode.APPOINTMENT_DUPLICATED.toException();
         }
 
         // 6. 条件更新扣减号源（防止超卖）
         int updated = scheduleRepository.incrementBookedCount(request.scheduleId(), now);
         if (updated == 0) {
-            throw new IllegalArgumentException(
-                    "SCHEDULE_FULL:号源已满");
+            throw AppointmentErrorCode.APPOINTMENT_SCHEDULE_FULL.toException();
         }
 
         // 7. 创建挂号记录
@@ -131,23 +132,22 @@ public class AppointmentService {
     @Transactional
     public AppointmentResponse cancelAppointment(Long id, AppointmentCancelRequest request) {
         Appointment appointment = appointmentRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "APPOINTMENT_NOT_FOUND:挂号不存在"));
+                .orElseThrow(AppointmentErrorCode.APPOINTMENT_NOT_FOUND::toException);
+
+        // 权限校验：患者只能取消自己的挂号
+        checkAppointmentAccess(appointment);
 
         // 检查挂号状态
         if ("CANCELLED".equals(appointment.getStatus())) {
-            throw new IllegalArgumentException(
-                    "APPOINTMENT_STATUS_CONFLICT:挂号已取消");
+            throw AppointmentErrorCode.APPOINTMENT_STATUS_CONFLICT.toException();
         }
         if ("COMPLETED".equals(appointment.getStatus())) {
-            throw new IllegalArgumentException(
-                    "APPOINTMENT_STATUS_CONFLICT:挂号已完成，不能取消");
+            throw AppointmentErrorCode.APPOINTMENT_STATUS_CONFLICT.toException();
         }
         // 接诊开始后不得取消
         if ("IN_PROGRESS".equals(appointment.getStatus())
                 || "WAITING_EXAM".equals(appointment.getStatus())) {
-            throw new IllegalArgumentException(
-                    "APPOINTMENT_STATUS_CONFLICT:接诊已开始，不能取消");
+            throw AppointmentErrorCode.APPOINTMENT_CANNOT_CANCEL.toException();
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -173,19 +173,20 @@ public class AppointmentService {
     @Transactional(readOnly = true)
     public AppointmentResponse getAppointmentById(Long id) {
         Appointment appointment = appointmentRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "APPOINTMENT_NOT_FOUND:挂号不存在"));
+                .orElseThrow(AppointmentErrorCode.APPOINTMENT_NOT_FOUND::toException);
+        // 权限校验：患者只能查看自己的挂号
+        checkAppointmentAccess(appointment);
         return toResponse(appointment);
     }
 
     /**
-     * 查询患者挂号（患者只能查看本人挂号）
+     * 查询患者挂号（患者只能查看本人挂号，分页）
      */
     @Transactional(readOnly = true)
-    public List<AppointmentResponse> getAppointmentsByPatient(Long patientId) {
-        return appointmentRepository.findByPatientId(patientId).stream()
-                .map(this::toResponse)
-                .collect(Collectors.toList());
+    public Page<AppointmentResponse> getAppointmentsByPatient(Long patientId, Pageable pageable) {
+        checkPatientOwnership(patientId);
+        return appointmentRepository.findByPatientId(patientId, pageable)
+                .map(this::toResponse);
     }
 
     /**
@@ -199,13 +200,12 @@ public class AppointmentService {
     }
 
     /**
-     * 查询医生所有挂号
+     * 查询医生所有挂号（分页）
      */
     @Transactional(readOnly = true)
-    public List<AppointmentResponse> getAppointmentsByDoctor(Long doctorId) {
-        return appointmentRepository.findByDoctorId(doctorId).stream()
-                .map(this::toResponse)
-                .collect(Collectors.toList());
+    public Page<AppointmentResponse> getAppointmentsByDoctor(Long doctorId, Pageable pageable) {
+        return appointmentRepository.findByDoctorId(doctorId, pageable)
+                .map(this::toResponse);
     }
 
     /**
@@ -216,6 +216,57 @@ public class AppointmentService {
         return appointmentRepository.findAll().stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * 校验当前登录患者只能操作自己的数据
+     */
+    private void checkPatientOwnership(Long patientId) {
+        if (!SecurityUtils.isAuthenticated()) {
+            return;
+        }
+        AuthPrincipal currentUser = SecurityUtils.getCurrentUser();
+        if (currentUser.roles() != null && currentUser.roles().contains("PATIENT")) {
+            Patient currentPatient = patientRepository.findByUserId(currentUser.userId())
+                    .orElseThrow(AppointmentErrorCode.PATIENT_NOT_FOUND::toException);
+            if (!currentPatient.getId().equals(patientId)) {
+                throw AppointmentErrorCode.APPOINTMENT_PERMISSION_DENIED.toException();
+            }
+        }
+    }
+
+    /**
+     * 校验当前登录用户对挂号的访问权限
+     * - 患者：只能访问自己的挂号
+     * - 医生：可访问自己作为接诊医生的挂号
+     * - 管理员：可访问所有挂号
+     */
+    private void checkAppointmentAccess(Appointment appointment) {
+        if (!SecurityUtils.isAuthenticated()) {
+            return;
+        }
+        AuthPrincipal currentUser = SecurityUtils.getCurrentUser();
+        if (currentUser.roles() == null) {
+            return;
+        }
+        // 管理员放行
+        if (currentUser.roles().contains("ADMIN")) {
+            return;
+        }
+        // 患者：只能访问自己的挂号
+        if (currentUser.roles().contains("PATIENT")) {
+            Patient currentPatient = patientRepository.findByUserId(currentUser.userId())
+                    .orElseThrow(AppointmentErrorCode.PATIENT_NOT_FOUND::toException);
+            if (!currentPatient.getId().equals(appointment.getPatientId())) {
+                throw AppointmentErrorCode.APPOINTMENT_PERMISSION_DENIED.toException();
+            }
+        }
+        // 医生：可访问自己作为接诊医生的挂号
+        if (currentUser.roles().contains("DOCTOR")) {
+            if (!appointment.getDoctorId().equals(currentUser.userId())) {
+                throw AppointmentErrorCode.APPOINTMENT_PERMISSION_DENIED.toException();
+            }
+        }
     }
 
     /**

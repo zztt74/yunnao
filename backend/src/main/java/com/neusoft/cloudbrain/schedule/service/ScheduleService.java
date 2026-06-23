@@ -11,14 +11,16 @@ import com.neusoft.cloudbrain.schedule.dto.ScheduleCreateRequest;
 import com.neusoft.cloudbrain.schedule.dto.ScheduleResponse;
 import com.neusoft.cloudbrain.schedule.dto.ScheduleUpdateRequest;
 import com.neusoft.cloudbrain.schedule.entity.Schedule;
+import com.neusoft.cloudbrain.schedule.exception.ScheduleErrorCode;
 import com.neusoft.cloudbrain.schedule.repository.ScheduleRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -62,26 +64,21 @@ public class ScheduleService {
     public ScheduleResponse createSchedule(ScheduleCreateRequest request) {
         // 校验医生存在且启用
         Doctor doctor = doctorRepository.findById(request.doctorId())
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "DOCTOR_NOT_FOUND:医生不存在"));
+                .orElseThrow(ScheduleErrorCode.DOCTOR_NOT_FOUND::toException);
         if (!"ENABLED".equals(doctor.getStatus())) {
-            throw new IllegalArgumentException(
-                    "DOCTOR_DISABLED:医生已停用，不能创建排班");
+            throw ScheduleErrorCode.DOCTOR_DISABLED.toException();
         }
 
         // 校验科室存在且启用
         Department department = departmentRepository.findById(request.departmentId())
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "DEPARTMENT_NOT_FOUND:科室不存在"));
+                .orElseThrow(ScheduleErrorCode.DEPARTMENT_NOT_FOUND::toException);
         if (!"ENABLED".equals(department.getStatus())) {
-            throw new IllegalArgumentException(
-                    "DEPARTMENT_DISABLED:科室已停用，不能创建排班");
+            throw ScheduleErrorCode.DEPARTMENT_DISABLED.toException();
         }
 
         // 校验时间合法性
         if (!request.startTime().isBefore(request.endTime())) {
-            throw new IllegalArgumentException(
-                    "VALIDATION_FAILED:开始时间必须早于结束时间");
+            throw ScheduleErrorCode.SCHEDULE_TIME_INVALID.toException();
         }
 
         // 校验时间不重叠（同一医生同一天）
@@ -91,8 +88,7 @@ public class ScheduleService {
                 request.startTime(),
                 request.endTime());
         if (!conflicts.isEmpty()) {
-            throw new IllegalArgumentException(
-                    "SCHEDULE_CONFLICT:同一医生排班时间重叠");
+            throw ScheduleErrorCode.SCHEDULE_CONFLICT.toException();
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -119,25 +115,21 @@ public class ScheduleService {
     @Transactional
     public ScheduleResponse updateSchedule(Long id, ScheduleUpdateRequest request) {
         Schedule schedule = scheduleRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "SCHEDULE_NOT_FOUND:排班不存在"));
+                .orElseThrow(ScheduleErrorCode.SCHEDULE_NOT_FOUND::toException);
 
         // 已取消或已完成的排班不能修改
         if ("CANCELLED".equals(schedule.getStatus()) || "COMPLETED".equals(schedule.getStatus())) {
-            throw new IllegalArgumentException(
-                    "SCHEDULE_STATUS_CONFLICT:已取消或已结束的排班不能修改");
+            throw ScheduleErrorCode.SCHEDULE_STATUS_CONFLICT.toException();
         }
 
         // 已有预约时不能减少容量
         if (request.maxAppointments() < schedule.getBookedCount()) {
-            throw new IllegalArgumentException(
-                    "SCHEDULE_CAPACITY_CONFLICT:已有预约数大于新的最大号源数");
+            throw ScheduleErrorCode.SCHEDULE_CAPACITY_CONFLICT.toException();
         }
 
         // 校验时间合法性
         if (!request.startTime().isBefore(request.endTime())) {
-            throw new IllegalArgumentException(
-                    "VALIDATION_FAILED:开始时间必须早于结束时间");
+            throw ScheduleErrorCode.SCHEDULE_TIME_INVALID.toException();
         }
 
         // 检查时间冲突（排除自身）
@@ -150,8 +142,7 @@ public class ScheduleService {
                 .filter(s -> !s.getId().equals(id))
                 .collect(Collectors.toList());
         if (!conflicts.isEmpty()) {
-            throw new IllegalArgumentException(
-                    "SCHEDULE_CONFLICT:同一医生排班时间重叠");
+            throw ScheduleErrorCode.SCHEDULE_CONFLICT.toException();
         }
 
         schedule.setStartTime(request.startTime());
@@ -180,17 +171,14 @@ public class ScheduleService {
     @Transactional
     public ScheduleResponse cancelSchedule(Long id, ScheduleCancelRequest request) {
         Schedule schedule = scheduleRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "SCHEDULE_NOT_FOUND:排班不存在"));
+                .orElseThrow(ScheduleErrorCode.SCHEDULE_NOT_FOUND::toException);
 
         // 已取消或已完成的排班不能再次取消
         if ("CANCELLED".equals(schedule.getStatus())) {
-            throw new IllegalArgumentException(
-                    "SCHEDULE_STATUS_CONFLICT:排班已取消");
+            throw ScheduleErrorCode.SCHEDULE_STATUS_CONFLICT.toException();
         }
         if ("COMPLETED".equals(schedule.getStatus())) {
-            throw new IllegalArgumentException(
-                    "SCHEDULE_STATUS_CONFLICT:排班已结束");
+            throw ScheduleErrorCode.SCHEDULE_STATUS_CONFLICT.toException();
         }
 
         // 检查是否有进行中或已完成的挂号
@@ -200,8 +188,7 @@ public class ScheduleService {
                         || "COMPLETED".equals(a.getStatus()))
                 .collect(Collectors.toList());
         if (!activeAppointments.isEmpty()) {
-            throw new IllegalArgumentException(
-                    "SCHEDULE_CANCEL_CONFLICT:存在进行中或已完成的挂号，不能取消排班");
+            throw ScheduleErrorCode.SCHEDULE_CANCEL_CONFLICT.toException();
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -242,8 +229,7 @@ public class ScheduleService {
     @Transactional(readOnly = true)
     public ScheduleResponse getScheduleById(Long id) {
         Schedule schedule = scheduleRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "SCHEDULE_NOT_FOUND:排班不存在"));
+                .orElseThrow(ScheduleErrorCode.SCHEDULE_NOT_FOUND::toException);
 
         Doctor doctor = doctorRepository.findById(schedule.getDoctorId()).orElse(null);
         Department department = departmentRepository.findById(schedule.getDepartmentId()).orElse(null);
@@ -254,20 +240,19 @@ public class ScheduleService {
     }
 
     /**
-     * 按医生查询排班
+     * 按医生查询排班（分页）
      */
     @Transactional(readOnly = true)
-    public List<ScheduleResponse> getSchedulesByDoctor(Long doctorId) {
+    public Page<ScheduleResponse> getSchedulesByDoctor(Long doctorId, Pageable pageable) {
         Doctor doctor = doctorRepository.findById(doctorId).orElse(null);
         String doctorName = doctor != null ? doctor.getName() : null;
 
-        return scheduleRepository.findByDoctorId(doctorId).stream()
+        return scheduleRepository.findByDoctorId(doctorId, pageable)
                 .map(schedule -> {
                     Department department = departmentRepository.findById(schedule.getDepartmentId()).orElse(null);
                     return toResponse(schedule, doctorName,
                             department != null ? department.getName() : null);
-                })
-                .collect(Collectors.toList());
+                });
     }
 
     /**

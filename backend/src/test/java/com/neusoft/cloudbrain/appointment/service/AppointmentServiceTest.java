@@ -5,6 +5,7 @@ import com.neusoft.cloudbrain.appointment.dto.AppointmentCreateRequest;
 import com.neusoft.cloudbrain.appointment.dto.AppointmentResponse;
 import com.neusoft.cloudbrain.appointment.entity.Appointment;
 import com.neusoft.cloudbrain.appointment.repository.AppointmentRepository;
+import com.neusoft.cloudbrain.common.exception.BusinessException;
 import com.neusoft.cloudbrain.department.entity.Department;
 import com.neusoft.cloudbrain.department.repository.DepartmentRepository;
 import com.neusoft.cloudbrain.doctor.entity.Doctor;
@@ -20,6 +21,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -29,7 +33,6 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
@@ -148,19 +151,20 @@ class AppointmentServiceTest {
     }
 
     @Test
-    @DisplayName("创建挂号 - 患者不存在时抛出异常")
+    @DisplayName("创建挂号 - 患者不存在时抛出 BusinessException(404)")
     void createAppointment_shouldThrowWhenPatientNotFound() {
         AppointmentCreateRequest request = new AppointmentCreateRequest(99L, 1L);
 
         when(patientRepository.findById(99L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> appointmentService.createAppointment(request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("PATIENT_NOT_FOUND");
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "PATIENT_NOT_FOUND")
+                .hasFieldOrPropertyWithValue("httpStatus", 404);
     }
 
     @Test
-    @DisplayName("创建挂号 - 患者已停用时抛出异常")
+    @DisplayName("创建挂号 - 患者已停用时抛出 BusinessException(409)")
     void createAppointment_shouldThrowWhenPatientInactive() {
         testPatient.setStatus("DISABLED");
         AppointmentCreateRequest request = new AppointmentCreateRequest(1L, 1L);
@@ -168,12 +172,13 @@ class AppointmentServiceTest {
         when(patientRepository.findById(1L)).thenReturn(Optional.of(testPatient));
 
         assertThatThrownBy(() -> appointmentService.createAppointment(request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("PATIENT_INACTIVE");
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "APPOINTMENT_STATUS_CONFLICT")
+                .hasFieldOrPropertyWithValue("httpStatus", 409);
     }
 
     @Test
-    @DisplayName("创建挂号 - 排班已取消时抛出异常")
+    @DisplayName("创建挂号 - 排班已取消时抛出 BusinessException(409)")
     void createAppointment_shouldThrowWhenScheduleCancelled() {
         testSchedule.setStatus("CANCELLED");
         AppointmentCreateRequest request = new AppointmentCreateRequest(1L, 1L);
@@ -182,12 +187,13 @@ class AppointmentServiceTest {
         when(scheduleRepository.findById(1L)).thenReturn(Optional.of(testSchedule));
 
         assertThatThrownBy(() -> appointmentService.createAppointment(request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("SCHEDULE_CANCELLED");
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "APPOINTMENT_SCHEDULE_NOT_AVAILABLE")
+                .hasFieldOrPropertyWithValue("httpStatus", 409);
     }
 
     @Test
-    @DisplayName("创建挂号 - 排班已过期时抛出异常")
+    @DisplayName("创建挂号 - 排班已过期时抛出 BusinessException(409)")
     void createAppointment_shouldThrowWhenScheduleExpired() {
         testSchedule.setEndTime(LocalDateTime.now().minusHours(1));
         AppointmentCreateRequest request = new AppointmentCreateRequest(1L, 1L);
@@ -196,12 +202,13 @@ class AppointmentServiceTest {
         when(scheduleRepository.findById(1L)).thenReturn(Optional.of(testSchedule));
 
         assertThatThrownBy(() -> appointmentService.createAppointment(request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("SCHEDULE_EXPIRED");
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "APPOINTMENT_SCHEDULE_NOT_AVAILABLE")
+                .hasFieldOrPropertyWithValue("httpStatus", 409);
     }
 
     @Test
-    @DisplayName("创建挂号 - 重复挂号时抛出异常")
+    @DisplayName("创建挂号 - 重复挂号时抛出 BusinessException(409)")
     void createAppointment_shouldThrowWhenDuplicate() {
         AppointmentCreateRequest request = new AppointmentCreateRequest(1L, 1L);
 
@@ -211,12 +218,13 @@ class AppointmentServiceTest {
                 1L, 1L, "CANCELLED")).thenReturn(true);
 
         assertThatThrownBy(() -> appointmentService.createAppointment(request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("APPOINTMENT_DUPLICATED");
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "APPOINTMENT_DUPLICATED")
+                .hasFieldOrPropertyWithValue("httpStatus", 409);
     }
 
     @Test
-    @DisplayName("创建挂号 - 号源已满时抛出异常（并发竞争场景）")
+    @DisplayName("创建挂号 - 号源已满时抛出 BusinessException(409)（并发竞争场景）")
     void createAppointment_shouldThrowWhenScheduleFull() {
         AppointmentCreateRequest request = new AppointmentCreateRequest(1L, 1L);
 
@@ -229,8 +237,9 @@ class AppointmentServiceTest {
                 .thenReturn(0);
 
         assertThatThrownBy(() -> appointmentService.createAppointment(request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("SCHEDULE_FULL");
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "APPOINTMENT_SCHEDULE_FULL")
+                .hasFieldOrPropertyWithValue("httpStatus", 409);
 
         // 验证未创建挂号记录
         verify(appointmentRepository, never()).save(any(Appointment.class));
@@ -263,8 +272,9 @@ class AppointmentServiceTest {
         AppointmentCancelRequest request = new AppointmentCancelRequest("测试取消");
 
         assertThatThrownBy(() -> appointmentService.cancelAppointment(1L, request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("APPOINTMENT_STATUS_CONFLICT");
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "APPOINTMENT_CANNOT_CANCEL")
+                .hasFieldOrPropertyWithValue("httpStatus", 409);
     }
 
     @Test
@@ -276,8 +286,9 @@ class AppointmentServiceTest {
         AppointmentCancelRequest request = new AppointmentCancelRequest("测试取消");
 
         assertThatThrownBy(() -> appointmentService.cancelAppointment(1L, request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("APPOINTMENT_STATUS_CONFLICT");
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "APPOINTMENT_STATUS_CONFLICT")
+                .hasFieldOrPropertyWithValue("httpStatus", 409);
     }
 
     @Test
@@ -289,8 +300,9 @@ class AppointmentServiceTest {
         AppointmentCancelRequest request = new AppointmentCancelRequest("测试取消");
 
         assertThatThrownBy(() -> appointmentService.cancelAppointment(1L, request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("APPOINTMENT_STATUS_CONFLICT");
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "APPOINTMENT_STATUS_CONFLICT")
+                .hasFieldOrPropertyWithValue("httpStatus", 409);
     }
 
     @Test
@@ -309,17 +321,19 @@ class AppointmentServiceTest {
     }
 
     @Test
-    @DisplayName("获取患者挂号列表 - 返回所有挂号")
-    void getAppointmentsByPatient_shouldReturnAll() {
-        when(appointmentRepository.findByPatientId(1L))
-                .thenReturn(List.of(testAppointment));
+    @DisplayName("获取患者挂号列表 - 返回分页结果")
+    void getAppointmentsByPatient_shouldReturnPagedResult() {
+        Pageable pageable = PageRequest.of(0, 10);
+        when(appointmentRepository.findByPatientId(eq(1L), eq(pageable)))
+                .thenReturn(new PageImpl<>(List.of(testAppointment), pageable, 1));
         when(patientRepository.findById(1L)).thenReturn(Optional.of(testPatient));
         when(doctorRepository.findById(1L)).thenReturn(Optional.of(testDoctor));
         when(departmentRepository.findById(1L)).thenReturn(Optional.of(testDepartment));
 
-        List<AppointmentResponse> responses = appointmentService.getAppointmentsByPatient(1L);
+        var responses = appointmentService.getAppointmentsByPatient(1L, pageable);
 
-        assertThat(responses).hasSize(1);
+        assertThat(responses.getContent()).hasSize(1);
+        assertThat(responses.getTotalElements()).isEqualTo(1);
     }
 
     @Test

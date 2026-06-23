@@ -1,6 +1,8 @@
 package com.neusoft.cloudbrain.appointment.repository;
 
 import com.neusoft.cloudbrain.appointment.entity.Appointment;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -17,6 +19,16 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
      * 按患者 ID 查询挂号
      */
     List<Appointment> findByPatientId(Long patientId);
+
+    /**
+     * 按患者 ID 查询挂号（分页）
+     */
+    Page<Appointment> findByPatientId(Long patientId, Pageable pageable);
+
+    /**
+     * 按医生 ID 查询挂号（分页）
+     */
+    Page<Appointment> findByDoctorId(Long doctorId, Pageable pageable);
 
     /**
      * 按排班 ID 查询挂号

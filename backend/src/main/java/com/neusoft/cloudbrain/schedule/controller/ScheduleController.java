@@ -8,6 +8,9 @@ import com.neusoft.cloudbrain.schedule.dto.ScheduleUpdateRequest;
 import com.neusoft.cloudbrain.schedule.service.ScheduleService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -81,13 +84,16 @@ public class ScheduleController {
     }
 
     /**
-     * 按医生查询排班
+     * 按医生查询排班（分页）
      */
     @GetMapping("/doctor/{doctorId}")
-    public ApiResponse<List<ScheduleResponse>> getByDoctor(
+    public ApiResponse<Page<ScheduleResponse>> getByDoctor(
             @PathVariable Long doctorId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
             HttpServletRequest httpRequest) {
-        List<ScheduleResponse> response = scheduleService.getSchedulesByDoctor(doctorId);
+        Pageable pageable = PageRequest.of(page, size);
+        Page<ScheduleResponse> response = scheduleService.getSchedulesByDoctor(doctorId, pageable);
         return ApiResponse.success(response, (String) httpRequest.getAttribute("traceId"));
     }
 
