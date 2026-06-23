@@ -1,0 +1,85 @@
+# 认证模块 Schema
+#
+# 对应阶段 1：登录和权限
+# 契约来源：contracts/30_接口数据与错误契约.md 第11节
+
+LoginRequest:
+  type: object
+  required:
+    - username
+    - password
+  properties:
+    username:
+      type: string
+      maxLength: 64
+      description: 用户名
+      example: admin
+    password:
+      type: string
+      minLength: 8
+      maxLength: 64
+      description: 密码
+      example: "Admin@2026"
+
+LoginResponse:
+  type: object
+  required:
+    - accessToken
+    - tokenType
+    - userId
+    - username
+    - roles
+    - mustChangePassword
+    - expiresIn
+  properties:
+    accessToken:
+      type: string
+      description: JWT Access Token
+      example: "eyJhbGciOiJIUzI1NiJ9..."
+    tokenType:
+      type: string
+      enum: [Bearer]
+      description: Token 类型
+      example: Bearer
+    userId:
+      type: integer
+      format: int64
+      description: 用户 ID
+      example: 1
+    username:
+      type: string
+      description: 用户名
+      example: admin
+    roles:
+      type: array
+      items:
+        type: string
+        enum: [PATIENT, DOCTOR, ADMIN]
+      description: 用户角色列表
+      example: ["ADMIN"]
+    mustChangePassword:
+      type: boolean
+      description: 是否需要强制修改密码（初始管理员首次登录为 true）
+      example: false
+    expiresIn:
+      type: integer
+      format: int64
+      description: Token 有效期（秒），基础版固定 2 小时（7200 秒）
+      example: 7200
+
+ChangePasswordRequest:
+  type: object
+  required:
+    - oldPassword
+    - newPassword
+  properties:
+    oldPassword:
+      type: string
+      description: 当前密码
+      example: "OldPassword123!"
+    newPassword:
+      type: string
+      minLength: 8
+      maxLength: 64
+      description: 新密码
+      example: "NewPassword123!"
