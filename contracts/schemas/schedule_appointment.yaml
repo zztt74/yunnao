@@ -1,0 +1,202 @@
+# 排班与挂号模块 Schema
+#
+# 对应阶段3：排班与挂号（Phase 5-6）
+# 契约来源：contracts/30_接口数据与错误契约.md、product/12_业务流程与状态机.md
+
+# ============================================================
+# 排班
+# ============================================================
+ScheduleCreateRequest:
+  type: object
+  required:
+    - doctorId
+    - departmentId
+    - scheduleDate
+    - startTime
+    - endTime
+    - maxAppointments
+  properties:
+    doctorId:
+      type: integer
+      format: int64
+      description: 医生 ID
+    departmentId:
+      type: integer
+      format: int64
+      description: 科室 ID
+    scheduleDate:
+      type: string
+      format: date
+      description: 排班日期
+    startTime:
+      type: string
+      format: date-time
+      description: 开始时间
+    endTime:
+      type: string
+      format: date-time
+      description: 结束时间
+    maxAppointments:
+      type: integer
+      minimum: 1
+      description: 最大号源数
+
+ScheduleUpdateRequest:
+  type: object
+  required:
+    - startTime
+    - endTime
+    - maxAppointments
+  properties:
+    startTime:
+      type: string
+      format: date-time
+      description: 开始时间
+    endTime:
+      type: string
+      format: date-time
+      description: 结束时间
+    maxAppointments:
+      type: integer
+      minimum: 1
+      description: 最大号源数
+
+ScheduleCancelRequest:
+  type: object
+  required:
+    - reason
+  properties:
+    reason:
+      type: string
+      maxLength: 255
+      description: 取消原因
+
+ScheduleResponse:
+  type: object
+  properties:
+    id:
+      type: integer
+      format: int64
+    doctorId:
+      type: integer
+      format: int64
+    doctorName:
+      type: string
+    departmentId:
+      type: integer
+      format: int64
+    departmentName:
+      type: string
+    scheduleDate:
+      type: string
+      format: date
+    startTime:
+      type: string
+      format: date-time
+    endTime:
+      type: string
+      format: date-time
+    maxAppointments:
+      type: integer
+    bookedCount:
+      type: integer
+    remainingCount:
+      type: integer
+    status:
+      type: string
+      enum: [AVAILABLE, FULL, CANCELLED, COMPLETED]
+    cancelledAt:
+      type: string
+      format: date-time
+      nullable: true
+    cancelReason:
+      type: string
+      nullable: true
+    createdAt:
+      type: string
+      format: date-time
+    updatedAt:
+      type: string
+      format: date-time
+
+# ============================================================
+# 挂号
+# ============================================================
+AppointmentCreateRequest:
+  type: object
+  required:
+    - patientId
+    - scheduleId
+  properties:
+    patientId:
+      type: integer
+      format: int64
+      description: 患者 ID
+    scheduleId:
+      type: integer
+      format: int64
+      description: 排班 ID
+
+AppointmentCancelRequest:
+  type: object
+  required:
+    - reason
+  properties:
+    reason:
+      type: string
+      maxLength: 255
+      description: 取消原因
+
+AppointmentResponse:
+  type: object
+  properties:
+    id:
+      type: integer
+      format: int64
+    patientId:
+      type: integer
+      format: int64
+    patientName:
+      type: string
+    scheduleId:
+      type: integer
+      format: int64
+    doctorId:
+      type: integer
+      format: int64
+    doctorName:
+      type: string
+    departmentId:
+      type: integer
+      format: int64
+    departmentName:
+      type: string
+    appointmentNumber:
+      type: string
+    status:
+      type: string
+      enum: [BOOKED, CHECKED_IN, IN_PROGRESS, WAITING_EXAM, COMPLETED, CANCELLED, NO_SHOW]
+    bookedAt:
+      type: string
+      format: date-time
+    checkInTime:
+      type: string
+      format: date-time
+      nullable: true
+    cancellationReason:
+      type: string
+      nullable: true
+    cancellationSource:
+      type: string
+      enum: [PATIENT, SCHEDULE, ADMIN]
+      nullable: true
+    cancelledAt:
+      type: string
+      format: date-time
+      nullable: true
+    createdAt:
+      type: string
+      format: date-time
+    updatedAt:
+      type: string
+      format: date-time
