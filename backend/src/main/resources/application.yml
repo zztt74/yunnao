@@ -35,3 +35,23 @@ springdoc:
     path: /v3/api-docs
   swagger-ui:
     path: /swagger-ui.html
+
+# JWT 配置
+jwt:
+  secret: ${JWT_SECRET}
+  expiration: 7200  # Token 有效期（秒），2 小时
+
+# 初始管理员配置
+admin:
+  init:
+    username: ${INITIAL_ADMIN_USERNAME:admin}
+    password: ${INITIAL_ADMIN_PASSWORD}
+
+# 安全配置
+security:
+  max-failed-attempts: 5      # 连续失败锁定阈值
+  lockout-minutes: 15         # 锁定时长（分钟）
+  rate-limit-window-seconds: 300   # 登录限流窗口（5 分钟）
+  rate-limit-max-attempts: 10     # 限流最大失败次数
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000}
