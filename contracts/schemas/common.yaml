@@ -1,0 +1,62 @@
+ApiResponse:
+  type: object
+  additionalProperties: false
+  required:
+    - code
+    - message
+    - data
+    - traceId
+  properties:
+    code:
+      $ref: '#/ErrorCode'
+    message:
+      type: string
+      minLength: 1
+    data:
+      description: 成功数据或错误上下文；具体接口必须收窄该类型。
+    traceId:
+      type: string
+      minLength: 1
+      maxLength: 64
+      pattern: '^[A-Za-z0-9_-]+$'
+      example: request-trace-id
+
+PageResponse:
+  type: object
+  additionalProperties: false
+  required:
+    - items
+    - page
+    - pageSize
+    - total
+    - totalPages
+  properties:
+    items:
+      type: array
+      items: {}
+    page:
+      type: integer
+      minimum: 1
+      example: 1
+    pageSize:
+      type: integer
+      minimum: 1
+      example: 20
+    total:
+      type: integer
+      format: int64
+      minimum: 0
+      example: 100
+    totalPages:
+      type: integer
+      minimum: 0
+      example: 5
+
+ErrorCode:
+  type: string
+  description: 成功使用 SUCCESS；失败使用已登记的分类前缀和大写下划线命名。
+  pattern: '^(?:SUCCESS|(?:AUTH|PERMISSION|VALIDATION|USER|PATIENT|DOCTOR|DEPARTMENT|SCHEDULE|APPOINTMENT|TRIAGE|ENCOUNTER|EXAMINATION|LABORATORY|AI|MEDICAL_RECORD|PRESCRIPTION|DEVICE|FILE|AUDIT|SYSTEM)_[A-Z0-9]+(?:_[A-Z0-9]+)*)$'
+  examples:
+    - SUCCESS
+    - VALIDATION_FAILED
+    - SYSTEM_INTERNAL_ERROR

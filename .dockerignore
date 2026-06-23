@@ -1,0 +1,11 @@
+.git
+.github
+.env
+**/node_modules
+**/dist
+**/target
+*.log
+docs
+tests
+postman
+智慧云脑诊疗平台_AI协作文档_v2

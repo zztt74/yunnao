@@ -1,0 +1,26 @@
+openapi: 3.1.0
+info:
+  title: 智慧云脑诊疗平台 API
+  version: 0.1.0
+  description: |
+    Stage 0 契约根文件。当前只冻结公共响应、安全方案和分页结构，
+    不包含未经任务卡批准的医疗业务接口。
+servers:
+  - url: http://localhost:8080
+    description: 本地后端
+  - url: http://localhost:4010
+    description: Prism API Mock Server
+paths: {}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ApiResponse:
+      $ref: ./schemas/common.yaml#/ApiResponse
+    PageResponse:
+      $ref: ./schemas/common.yaml#/PageResponse
+    ErrorCode:
+      $ref: ./schemas/common.yaml#/ErrorCode
