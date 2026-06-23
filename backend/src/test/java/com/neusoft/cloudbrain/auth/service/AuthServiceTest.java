@@ -390,4 +390,44 @@ class AuthServiceTest {
                 savedUser.getFailedLoginAttempts() == 0
         ));
     }
+
+    // ========== 管理员重置密码后旧 Token 失效测试 ==========
+
+    @Test
+    @DisplayName("修改密码后 tokenVersion 应递增，使旧 Token 失效")
+    void changePassword_shouldIncrementTokenVersion() {
+        // 准备
+        UserAccount user = createTestUser(true, false, false);
+        user.setTokenVersion(5L); // 当前版本为 5
+        ChangePasswordRequest request = new ChangePasswordRequest(RAW_PASSWORD, "NewPassword123!");
+
+        when(userAccountRepository.findById(1L)).thenReturn(Optional.of(user));
+
+        // 执行
+        authService.changePassword(1L, request);
+
+        // 验证 - tokenVersion 应该从 5 递增到 6
+        verify(userAccountRepository).save(argThat(savedUser ->
+                savedUser.getTokenVersion().equals(6L)
+        ));
+    }
+
+    // ========== Token 过期/无效测试（通过 JwtService 测试覆盖） ==========
+
+    @Test
+    @DisplayName("退出登录后 tokenVersion 递增，旧 Token 将失效")
+    void logout_shouldIncrementTokenVersionMakingOldTokenInvalid() {
+        // 准备
+        UserAccount user = createTestUser(true, false, false);
+        user.setTokenVersion(10L);
+        when(userAccountRepository.findById(1L)).thenReturn(Optional.of(user));
+
+        // 执行
+        authService.logout(1L);
+
+        // 验证 - tokenVersion 从 10 递增到 11
+        verify(userAccountRepository).save(argThat(savedUser ->
+                savedUser.getTokenVersion().equals(11L)
+        ));
+    }
 }

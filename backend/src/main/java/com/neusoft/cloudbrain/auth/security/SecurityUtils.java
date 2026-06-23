@@ -28,7 +28,7 @@ public class SecurityUtils {
             return authPrincipal;
         }
 
-        throw new IllegalStateException("AUTH_TOKEN_REVOKS:无法获取当前用户信息");
+        throw new IllegalStateException("AUTH_TOKEN_REVOKED:无法获取当前用户信息");
     }
 
     /**

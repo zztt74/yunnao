@@ -3,8 +3,9 @@ package com.neusoft.cloudbrain.auth.entity;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Data;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 import java.time.LocalDateTime;
 
@@ -15,10 +16,11 @@ import java.time.LocalDateTime;
 @Table(name = "role", uniqueConstraints = {
         @UniqueConstraint(name = "uk_role_name", columnNames = "name")
 })
-@Data
-@Builder
+@Getter
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder
 public class Role {
 
     @Id

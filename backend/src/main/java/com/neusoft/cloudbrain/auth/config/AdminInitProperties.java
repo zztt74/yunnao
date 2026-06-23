@@ -19,6 +19,6 @@ public class AdminInitProperties {
     /** 初始管理员用户名 */
     private String username = "admin";
 
-    /** 初始管理员密码 */
-    private String password = "Admin@2026";
+    /** 初始管理员密码（必须通过环境变量配置，生产环境缺失时拒绝启动） */
+    private String password;
 }
