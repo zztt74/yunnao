@@ -1,0 +1,12 @@
+{
+  "name": "cloud-brain-contract-tests",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "validate": "node validate-openapi.mjs"
+  },
+  "devDependencies": {
+    "@redocly/cli": "2.34.0"
+  }
+}

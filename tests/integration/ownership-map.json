@@ -1,0 +1,57 @@
+{
+  "architecture": {
+    "include": [
+      "^智慧云脑诊疗平台_AI协作文档_v2/",
+      "^docs/architecture/",
+      "^docs/superpowers/specs/",
+      "^docs/superpowers/plans/"
+    ],
+    "exclude": [
+      "^智慧云脑诊疗平台_AI协作文档_v2/tasks/(?!TASK_TEMPLATE\\.md$)"
+    ]
+  },
+  "backend": {
+    "include": [
+      "^backend/"
+    ],
+    "exclude": [
+      "^backend/src/main/java/.*/ai/",
+      "^backend/src/main/resources/prompts/",
+      "^backend/src/main/resources/application-ai\\.yml$",
+      "^backend/src/test/.*/ai/"
+    ]
+  },
+  "frontend": {
+    "include": [
+      "^frontend/"
+    ],
+    "exclude": []
+  },
+  "ai": {
+    "include": [
+      "^backend/src/main/java/.*/ai/",
+      "^backend/src/main/resources/prompts/",
+      "^backend/src/main/resources/application-ai\\.yml$",
+      "^backend/src/test/.*/ai/"
+    ],
+    "exclude": []
+  },
+  "integration": {
+    "include": [
+      "^contracts/",
+      "^tests/",
+      "^postman/",
+      "^deploy/",
+      "^\\.github/workflows/",
+      "^docs/integration/",
+      "^docs/changes/",
+      "^docker-compose\\.yml$",
+      "^README\\.md$",
+      "^\\.gitignore$",
+      "^\\.env\\.example$",
+      "^\\.dockerignore$",
+      "^redocly\\.yaml$"
+    ],
+    "exclude": []
+  }
+}

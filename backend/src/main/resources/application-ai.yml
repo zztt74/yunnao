@@ -1,0 +1,7 @@
+app:
+  ai:
+    mode: ${AI_MODE:MOCK}
+    api-url: ${AI_API_URL:}
+    api-key: ${AI_API_KEY:}
+    timeout-ms: ${AI_TIMEOUT_MS:8000}
+    max-retries: ${AI_MAX_RETRIES:1}
