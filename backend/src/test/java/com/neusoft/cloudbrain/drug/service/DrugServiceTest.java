@@ -1,5 +1,6 @@
 package com.neusoft.cloudbrain.drug.service;
 
+import com.neusoft.cloudbrain.common.exception.BusinessException;
 import com.neusoft.cloudbrain.drug.dto.DrugInteractionResponse;
 import com.neusoft.cloudbrain.drug.dto.DrugResponse;
 import com.neusoft.cloudbrain.drug.entity.*;
@@ -98,8 +99,9 @@ class DrugServiceTest {
         when(drugRepository.findById(99L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> drugService.getDrugById(99L))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("DRUG_NOT_FOUND");
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "DRUG_NOT_FOUND")
+                .hasFieldOrPropertyWithValue("httpStatus", 404);
     }
 
     @Test

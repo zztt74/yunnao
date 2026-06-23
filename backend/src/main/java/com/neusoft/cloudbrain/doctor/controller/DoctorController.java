@@ -1,6 +1,9 @@
 package com.neusoft.cloudbrain.doctor.controller;
 
+import com.neusoft.cloudbrain.auth.dto.AuthPrincipal;
+import com.neusoft.cloudbrain.auth.security.SecurityUtils;
 import com.neusoft.cloudbrain.common.api.ApiResponse;
+import com.neusoft.cloudbrain.common.exception.BusinessException;
 import com.neusoft.cloudbrain.doctor.dto.DoctorCreateRequest;
 import com.neusoft.cloudbrain.doctor.dto.DoctorResponse;
 import com.neusoft.cloudbrain.doctor.dto.DoctorUpdateRequest;
@@ -72,25 +75,37 @@ public class DoctorController {
     }
 
     /**
-     * 创建医生
+     * 创建医生（管理员）
      */
     @PostMapping
     public ApiResponse<DoctorResponse> create(
             @Valid @RequestBody DoctorCreateRequest request,
             HttpServletRequest httpRequest) {
+        checkAdminPermission();
         DoctorResponse response = doctorService.createDoctor(request);
         return ApiResponse.success(response, (String) httpRequest.getAttribute("traceId"));
     }
 
     /**
-     * 更新医生
+     * 更新医生（管理员）
      */
     @PutMapping("/{id}")
     public ApiResponse<DoctorResponse> update(
             @PathVariable Long id,
             @Valid @RequestBody DoctorUpdateRequest request,
             HttpServletRequest httpRequest) {
+        checkAdminPermission();
         DoctorResponse response = doctorService.updateDoctor(id, request);
         return ApiResponse.success(response, (String) httpRequest.getAttribute("traceId"));
+    }
+
+    /**
+     * 校验管理员权限
+     */
+    private void checkAdminPermission() {
+        AuthPrincipal currentUser = SecurityUtils.getCurrentUser();
+        if (!currentUser.roles().contains("ADMIN")) {
+            throw new BusinessException("PERMISSION_DENIED", "无权限执行该操作", 403);
+        }
     }
 }

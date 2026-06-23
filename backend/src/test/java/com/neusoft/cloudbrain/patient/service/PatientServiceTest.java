@@ -4,6 +4,7 @@ import com.neusoft.cloudbrain.auth.entity.Role;
 import com.neusoft.cloudbrain.auth.entity.UserAccount;
 import com.neusoft.cloudbrain.auth.repository.RoleRepository;
 import com.neusoft.cloudbrain.auth.repository.UserAccountRepository;
+import com.neusoft.cloudbrain.common.exception.BusinessException;
 import com.neusoft.cloudbrain.patient.dto.*;
 import com.neusoft.cloudbrain.patient.entity.Patient;
 import com.neusoft.cloudbrain.patient.entity.PatientProfile;
@@ -114,8 +115,9 @@ class PatientServiceTest {
                 .thenReturn(Optional.of(UserAccount.builder().build()));
 
         assertThatThrownBy(() -> patientService.register(request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("USER_USERNAME_DUPLICATED");
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "USER_USERNAME_DUPLICATED")
+                .hasFieldOrPropertyWithValue("httpStatus", 409);
     }
 
     @Test
@@ -135,8 +137,9 @@ class PatientServiceTest {
                 Patient.builder().id(2L).userId(20L).build()));
 
         assertThatThrownBy(() -> patientService.getPatientById(2L, 10L, Set.of("PATIENT")))
-                .isInstanceOf(SecurityException.class)
-                .hasMessageContaining("PERMISSION_DENIED");
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "PATIENT_PERMISSION_DENIED")
+                .hasFieldOrPropertyWithValue("httpStatus", 403);
     }
 
     @Test
@@ -160,8 +163,9 @@ class PatientServiceTest {
 
         // userId=20L 不是该患者的 userId(10L)
         assertThatThrownBy(() -> patientService.updatePatient(1L, request, 20L))
-                .isInstanceOf(SecurityException.class)
-                .hasMessageContaining("PERMISSION_DENIED");
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "PATIENT_PERMISSION_DENIED")
+                .hasFieldOrPropertyWithValue("httpStatus", 403);
     }
 
     @Test

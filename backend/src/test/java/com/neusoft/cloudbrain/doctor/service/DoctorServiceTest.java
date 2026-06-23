@@ -4,6 +4,7 @@ import com.neusoft.cloudbrain.auth.entity.Role;
 import com.neusoft.cloudbrain.auth.entity.UserAccount;
 import com.neusoft.cloudbrain.auth.repository.RoleRepository;
 import com.neusoft.cloudbrain.auth.repository.UserAccountRepository;
+import com.neusoft.cloudbrain.common.exception.BusinessException;
 import com.neusoft.cloudbrain.department.entity.Department;
 import com.neusoft.cloudbrain.department.repository.DepartmentRepository;
 import com.neusoft.cloudbrain.doctor.dto.*;
@@ -126,8 +127,9 @@ class DoctorServiceTest {
         when(departmentRepository.findById(1L)).thenReturn(Optional.of(testDepartment));
 
         assertThatThrownBy(() -> doctorService.createDoctor(request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("DEPARTMENT_DISABLED");
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "DEPARTMENT_DISABLED")
+                .hasFieldOrPropertyWithValue("httpStatus", 409);
     }
 
     @Test
@@ -140,8 +142,9 @@ class DoctorServiceTest {
         when(userAccountRepository.existsByUsername("existing")).thenReturn(true);
 
         assertThatThrownBy(() -> doctorService.createDoctor(request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("USER_USERNAME_DUPLICATED");
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "USER_USERNAME_DUPLICATED")
+                .hasFieldOrPropertyWithValue("httpStatus", 409);
     }
 
     @Test

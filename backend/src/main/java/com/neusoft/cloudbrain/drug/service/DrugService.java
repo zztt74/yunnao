@@ -3,6 +3,7 @@ package com.neusoft.cloudbrain.drug.service;
 import com.neusoft.cloudbrain.drug.dto.DrugInteractionResponse;
 import com.neusoft.cloudbrain.drug.dto.DrugResponse;
 import com.neusoft.cloudbrain.drug.entity.*;
+import com.neusoft.cloudbrain.drug.exception.DrugErrorCode;
 import com.neusoft.cloudbrain.drug.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -71,8 +72,7 @@ public class DrugService {
     @Transactional(readOnly = true)
     public DrugResponse getDrugById(Long id) {
         Drug drug = drugRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "DRUG_NOT_FOUND:药品不存在"));
+                .orElseThrow(DrugErrorCode.DRUG_NOT_FOUND::toException);
         return toDetailResponse(drug);
     }
 
@@ -82,8 +82,7 @@ public class DrugService {
     @Transactional(readOnly = true)
     public DrugResponse getDrugByCode(String code) {
         Drug drug = drugRepository.findByCode(code)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "DRUG_NOT_FOUND:药品不存在"));
+                .orElseThrow(DrugErrorCode.DRUG_NOT_FOUND::toException);
         return toDetailResponse(drug);
     }
 

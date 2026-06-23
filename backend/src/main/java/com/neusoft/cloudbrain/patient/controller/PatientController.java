@@ -3,6 +3,7 @@ package com.neusoft.cloudbrain.patient.controller;
 import com.neusoft.cloudbrain.auth.dto.AuthPrincipal;
 import com.neusoft.cloudbrain.auth.security.SecurityUtils;
 import com.neusoft.cloudbrain.common.api.ApiResponse;
+import com.neusoft.cloudbrain.common.exception.BusinessException;
 import com.neusoft.cloudbrain.patient.dto.*;
 import com.neusoft.cloudbrain.patient.service.PatientService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -111,6 +112,12 @@ public class PatientController {
             @RequestParam(required = false) String name,
             @RequestParam(required = false) String phone,
             HttpServletRequest httpRequest) {
+        // 权限校验：仅管理员可搜索患者
+        AuthPrincipal currentUser = SecurityUtils.getCurrentUser();
+        if (!currentUser.roles().contains("ADMIN")) {
+            throw new BusinessException("PERMISSION_DENIED", "无权限搜索患者", 403);
+        }
+
         List<PatientResponse> results;
         if (name != null && !name.isBlank()) {
             results = patientService.searchByName(name);
