@@ -3,14 +3,279 @@ info:
   title: 智慧云脑诊疗平台 API
   version: 0.1.0
   description: |
-    Stage 0 契约根文件。当前只冻结公共响应、安全方案和分页结构，
-    不包含未经任务卡批准的医疗业务接口。
+    阶段一：用户认证与权限管理
+
+    当前包含接口：
+    - POST /api/auth/login — 用户登录
+    - POST /api/auth/logout — 退出登录
+    - POST /api/auth/change-password — 修改密码
+
+    契约来源：contracts/30_接口数据与错误契约.md 第11节
 servers:
   - url: http://localhost:8080
     description: 本地后端
   - url: http://localhost:4010
     description: Prism API Mock Server
-paths: {}
+paths:
+  /api/auth/login:
+    post:
+      tags:
+        - 认证
+      summary: 用户登录
+      description: |
+        使用用户名和密码进行身份验证，成功后返回 JWT Access Token。
+
+        安全机制：
+        - 密码使用 BCrypt（cost=12）哈希存储和校验
+        - 连续 5 次失败锁定账号 15 分钟
+        - 按 IP + 用户名维度限流，5 分钟内最多 10 次失败
+        - 初始管理员首次登录必须修改密码
+
+        JWT Claims 结构：
+        - sub: 用户 ID
+        - roles: 角色列表
+        - tokenVersion: Token 版本号
+        - iat: 签发时间
+        - exp: 过期时间（+2 小时）
+        - jti: 唯一标识
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/auth.yaml#/LoginRequest'
+            examples:
+              正常登录:
+                value:
+                  username: admin
+                  password: "Admin@2026"
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: './schemas/auth.yaml#/LoginResponse'
+              examples:
+                成功响应:
+                  value:
+                    code: SUCCESS
+                    message: 操作成功
+                    data:
+                      accessToken: "eyJhbGciOiJIUzI1NiJ9..."
+                      tokenType: Bearer
+                      userId: 1
+                      username: admin
+                      roles:
+                        - ADMIN
+                      mustChangePassword: false
+                      expiresIn: 7200
+                    traceId: "abc-123-def"
+                强制改密提示:
+                  value:
+                    code: SUCCESS
+                    message: 操作成功
+                    data:
+                      accessToken: "eyJhbGciOiJIUzI1NiJ9..."
+                      tokenType: Bearer
+                      userId: 1
+                      username: admin
+                      roles:
+                        - ADMIN
+                      mustChangePassword: true
+                      expiresIn: 7200
+                    traceId: "abc-123-def"
+        '400':
+          description: 参数校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+              examples:
+                缺少字段:
+                  value:
+                    code: VALIDATION_FAILED
+                    message: "用户名不能为空"
+                    data: null
+                    traceId: "abc-123-def"
+                密码太短:
+                  value:
+                    code: VALIDATION_FAILED
+                    message: "密码长度必须在 8-64 之间"
+                    data: null
+                    traceId: "abc-123-def"
+        '401':
+          description: 认证失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+              examples:
+                错误凭证:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: "用户名或密码错误"
+                    data: null
+                    traceId: "abc-123-def"
+                账号锁定:
+                  value:
+                    code: AUTH_ACCOUNT_LOCKED
+                    message: "账号已锁定，10 分钟后重试"
+                    data: null
+                    traceId: "abc-123-def"
+                账号禁用:
+                  value:
+                    code: AUTH_ACCOUNT_DISABLED
+                    message: "账号已禁用"
+                    data: null
+                    traceId: "abc-123-def"
+        '429':
+          description: 登录限流
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+              examples:
+                限流:
+                  value:
+                    code: AUTH_LOGIN_RATE_LIMITED
+                    message: "登录尝试过于频繁"
+                    data: null
+                    traceId: "abc-123-def"
+
+  /api/auth/logout:
+    post:
+      tags:
+        - 认证
+      summary: 退出登录
+      description: |
+        清除当前用户的认证状态。
+
+        后端处理：
+        - 递增当前用户的 tokenVersion，使所有旧 Token 失效
+        - 前端需要清除本地存储的 Token 并跳转到登录页
+
+        认证要求：Bearer Token
+      operationId: logout
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 退出成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+              examples:
+                成功:
+                  value:
+                    code: SUCCESS
+                    message: 操作成功
+                    data: null
+                    traceId: "abc-123-def"
+        '401':
+          description: 未认证或 Token 已失效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+              examples:
+                Token 失效:
+                  value:
+                    code: AUTH_TOKEN_REVOKED
+                    message: "Token 已失效，请重新登录"
+                    data: null
+                    traceId: "abc-123-def"
+                未登录:
+                  value:
+                    code: AUTH_TOKEN_REVOKED
+                    message: "未登录或 Token 已失效"
+                    data: null
+                    traceId: "abc-123-def"
+
+  /api/auth/change-password:
+    post:
+      tags:
+        - 认证
+      summary: 修改密码
+      description: |
+        修改当前用户的密码。
+
+        业务规则：
+        - 必须提供正确的原密码
+        - 新密码不能与原密码相同
+        - 修改成功后自动清除 mustChangePassword 标记
+        - 递增 tokenVersion 使旧 Token 失效，需重新登录
+
+        认证要求：Bearer Token
+      operationId: changePassword
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/auth.yaml#/ChangePasswordRequest'
+            examples:
+              正常修改:
+                value:
+                  oldPassword: "OldPassword123!"
+                  newPassword: "NewPassword123!"
+      responses:
+        '200':
+          description: 修改成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+              examples:
+                成功:
+                  value:
+                    code: SUCCESS
+                    message: 操作成功
+                    data: null
+                    traceId: "abc-123-def"
+        '400':
+          description: 参数校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+              examples:
+                新旧密码相同:
+                  value:
+                    code: VALIDATION_FAILED
+                    message: "新密码不能与原密码相同"
+                    data: null
+                    traceId: "abc-123-def"
+        '401':
+          description: 认证失败或原密码错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+              examples:
+                原密码错误:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: "原密码错误"
+                    data: null
+                    traceId: "abc-123-def"
+                未登录:
+                  value:
+                    code: AUTH_TOKEN_REVOKED
+                    message: "未登录或 Token 已失效"
+                    data: null
+                    traceId: "abc-123-def"
+
 components:
   securitySchemes:
     bearerAuth:
