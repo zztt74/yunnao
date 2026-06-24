@@ -4,6 +4,7 @@ import com.neusoft.cloudbrain.department.dto.DepartmentCreateRequest;
 import com.neusoft.cloudbrain.department.dto.DepartmentResponse;
 import com.neusoft.cloudbrain.department.dto.DepartmentUpdateRequest;
 import com.neusoft.cloudbrain.department.entity.Department;
+import com.neusoft.cloudbrain.department.exception.DepartmentErrorCode;
 import com.neusoft.cloudbrain.department.repository.DepartmentRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -58,8 +59,7 @@ public class DepartmentService {
     @Transactional(readOnly = true)
     public DepartmentResponse getDepartmentById(Long id) {
         Department department = departmentRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "DEPARTMENT_NOT_FOUND:科室不存在"));
+                .orElseThrow(DepartmentErrorCode.DEPARTMENT_NOT_FOUND::toException);
         return toResponse(department);
     }
 
@@ -70,15 +70,13 @@ public class DepartmentService {
     public DepartmentResponse createDepartment(DepartmentCreateRequest request) {
         // 检查编码唯一性
         if (departmentRepository.existsByCode(request.code())) {
-            throw new IllegalArgumentException(
-                    "DEPARTMENT_CODE_DUPLICATED:科室编码已存在");
+            throw DepartmentErrorCode.DEPARTMENT_CODE_DUPLICATED.toException();
         }
 
         // 校验父科室
         if (request.parentId() != null) {
             departmentRepository.findById(request.parentId())
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "DEPARTMENT_PARENT_NOT_FOUND:父科室不存在"));
+                    .orElseThrow(DepartmentErrorCode.DEPARTMENT_PARENT_NOT_FOUND::toException);
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -104,14 +102,12 @@ public class DepartmentService {
     @Transactional
     public DepartmentResponse updateDepartment(Long id, DepartmentUpdateRequest request) {
         Department department = departmentRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "DEPARTMENT_NOT_FOUND:科室不存在"));
+                .orElseThrow(DepartmentErrorCode.DEPARTMENT_NOT_FOUND::toException);
 
         // 校验父科室
         if (request.parentId() != null && !request.parentId().equals(id)) {
             departmentRepository.findById(request.parentId())
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "DEPARTMENT_PARENT_NOT_FOUND:父科室不存在"));
+                    .orElseThrow(DepartmentErrorCode.DEPARTMENT_PARENT_NOT_FOUND::toException);
         }
 
         department.setName(request.name());

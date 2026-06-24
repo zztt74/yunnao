@@ -1,5 +1,6 @@
 package com.neusoft.cloudbrain.department.service;
 
+import com.neusoft.cloudbrain.common.exception.BusinessException;
 import com.neusoft.cloudbrain.department.dto.DepartmentCreateRequest;
 import com.neusoft.cloudbrain.department.dto.DepartmentResponse;
 import com.neusoft.cloudbrain.department.dto.DepartmentUpdateRequest;
@@ -93,8 +94,9 @@ class DepartmentServiceTest {
         when(departmentRepository.findById(99L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> departmentService.getDepartmentById(99L))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("DEPARTMENT_NOT_FOUND");
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "DEPARTMENT_NOT_FOUND")
+                .hasFieldOrPropertyWithValue("httpStatus", 404);
     }
 
     @Test
@@ -121,8 +123,9 @@ class DepartmentServiceTest {
         when(departmentRepository.existsByCode("DEPT_INTERNAL")).thenReturn(true);
 
         assertThatThrownBy(() -> departmentService.createDepartment(request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("DEPARTMENT_CODE_DUPLICATED");
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "DEPARTMENT_CODE_DUPLICATED")
+                .hasFieldOrPropertyWithValue("httpStatus", 409);
     }
 
     @Test

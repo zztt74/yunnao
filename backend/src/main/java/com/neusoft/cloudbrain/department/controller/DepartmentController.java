@@ -1,6 +1,9 @@
 package com.neusoft.cloudbrain.department.controller;
 
+import com.neusoft.cloudbrain.auth.dto.AuthPrincipal;
+import com.neusoft.cloudbrain.auth.security.SecurityUtils;
 import com.neusoft.cloudbrain.common.api.ApiResponse;
+import com.neusoft.cloudbrain.common.exception.BusinessException;
 import com.neusoft.cloudbrain.department.dto.DepartmentCreateRequest;
 import com.neusoft.cloudbrain.department.dto.DepartmentResponse;
 import com.neusoft.cloudbrain.department.dto.DepartmentUpdateRequest;
@@ -60,25 +63,37 @@ public class DepartmentController {
     }
 
     /**
-     * 创建科室
+     * 创建科室（管理员）
      */
     @PostMapping
     public ApiResponse<DepartmentResponse> create(
             @Valid @RequestBody DepartmentCreateRequest request,
             HttpServletRequest httpRequest) {
+        checkAdminPermission();
         DepartmentResponse response = departmentService.createDepartment(request);
         return ApiResponse.success(response, (String) httpRequest.getAttribute("traceId"));
     }
 
     /**
-     * 更新科室
+     * 更新科室（管理员）
      */
     @PutMapping("/{id}")
     public ApiResponse<DepartmentResponse> update(
             @PathVariable Long id,
             @Valid @RequestBody DepartmentUpdateRequest request,
             HttpServletRequest httpRequest) {
+        checkAdminPermission();
         DepartmentResponse response = departmentService.updateDepartment(id, request);
         return ApiResponse.success(response, (String) httpRequest.getAttribute("traceId"));
+    }
+
+    /**
+     * 校验管理员权限
+     */
+    private void checkAdminPermission() {
+        AuthPrincipal currentUser = SecurityUtils.getCurrentUser();
+        if (!currentUser.roles().contains("ADMIN")) {
+            throw new BusinessException("PERMISSION_DENIED", "无权限执行该操作", 403);
+        }
     }
 }

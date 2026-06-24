@@ -7,6 +7,7 @@ import com.neusoft.cloudbrain.auth.repository.UserAccountRepository;
 import com.neusoft.cloudbrain.patient.dto.*;
 import com.neusoft.cloudbrain.patient.entity.Patient;
 import com.neusoft.cloudbrain.patient.entity.PatientProfile;
+import com.neusoft.cloudbrain.patient.exception.PatientErrorCode;
 import com.neusoft.cloudbrain.patient.repository.PatientProfileRepository;
 import com.neusoft.cloudbrain.patient.repository.PatientRepository;
 import lombok.RequiredArgsConstructor;
@@ -49,7 +50,7 @@ public class PatientService {
     public PatientResponse register(PatientRegisterRequest request) {
         // 检查用户名唯一性
         if (userAccountRepository.findByUsername(request.username()).isPresent()) {
-            throw new IllegalArgumentException("USER_USERNAME_DUPLICATED:用户名已存在");
+            throw PatientErrorCode.USER_USERNAME_DUPLICATED.toException();
         }
 
         // 创建用户账号
@@ -70,7 +71,7 @@ public class PatientService {
 
         // 分配患者角色
         Role patientRole = roleRepository.findByName("PATIENT")
-                .orElseThrow(() -> new IllegalStateException("SYSTEM_INTERNAL_ERROR:患者角色未初始化"));
+                .orElseThrow(PatientErrorCode.SYSTEM_ROLE_NOT_INITIALIZED::toException);
         userAccount.setRoles(Set.of(patientRole));
 
         userAccount = userAccountRepository.save(userAccount);
@@ -106,8 +107,7 @@ public class PatientService {
     @Transactional(readOnly = true)
     public PatientResponse getCurrentPatient(Long userId) {
         Patient patient = patientRepository.findByUserId(userId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "PATIENT_NOT_FOUND:患者信息不存在"));
+                .orElseThrow(PatientErrorCode.PATIENT_NOT_FOUND::toException);
         return toResponse(patient);
     }
 
@@ -117,14 +117,13 @@ public class PatientService {
     @Transactional(readOnly = true)
     public PatientResponse getPatientById(Long id, Long currentUserId, Set<String> currentRoles) {
         Patient patient = patientRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "PATIENT_NOT_FOUND:患者不存在"));
+                .orElseThrow(PatientErrorCode.PATIENT_NOT_FOUND::toException);
 
         // 权限校验：患者只能查看自己的信息
         if (currentRoles.contains("PATIENT") && !currentRoles.contains("ADMIN")
                 && !currentRoles.contains("DOCTOR")) {
             if (!patient.getUserId().equals(currentUserId)) {
-                throw new SecurityException("PERMISSION_DENIED:无权访问他人患者信息");
+                throw PatientErrorCode.PATIENT_PERMISSION_DENIED.toException();
             }
         }
 
@@ -137,12 +136,11 @@ public class PatientService {
     @Transactional
     public PatientResponse updatePatient(Long id, PatientUpdateRequest request, Long currentUserId) {
         Patient patient = patientRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "PATIENT_NOT_FOUND:患者不存在"));
+                .orElseThrow(PatientErrorCode.PATIENT_NOT_FOUND::toException);
 
         // 权限校验：患者只能更新自己的信息
         if (!patient.getUserId().equals(currentUserId)) {
-            throw new SecurityException("PERMISSION_DENIED:无权修改他人患者信息");
+            throw PatientErrorCode.PATIENT_PERMISSION_DENIED.toException();
         }
 
         patient.setName(request.name());
@@ -161,20 +159,18 @@ public class PatientService {
     @Transactional(readOnly = true)
     public PatientProfileResponse getPatientProfile(Long patientId, Long currentUserId, Set<String> currentRoles) {
         Patient patient = patientRepository.findById(patientId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "PATIENT_NOT_FOUND:患者不存在"));
+                .orElseThrow(PatientErrorCode.PATIENT_NOT_FOUND::toException);
 
         // 权限校验：患者只能查看自己的档案
         if (currentRoles.contains("PATIENT") && !currentRoles.contains("ADMIN")
                 && !currentRoles.contains("DOCTOR")) {
             if (!patient.getUserId().equals(currentUserId)) {
-                throw new SecurityException("PERMISSION_DENIED:无权访问他人患者档案");
+                throw PatientErrorCode.PATIENT_PERMISSION_DENIED.toException();
             }
         }
 
         PatientProfile profile = patientProfileRepository.findByPatientId(patientId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "PATIENT_PROFILE_NOT_FOUND:患者档案不存在"));
+                .orElseThrow(PatientErrorCode.PATIENT_PROFILE_NOT_FOUND::toException);
 
         return toProfileResponse(profile);
     }
@@ -186,12 +182,11 @@ public class PatientService {
     public PatientProfileResponse updatePatientProfile(
             Long patientId, PatientProfileUpdateRequest request, Long currentUserId) {
         Patient patient = patientRepository.findById(patientId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "PATIENT_NOT_FOUND:患者不存在"));
+                .orElseThrow(PatientErrorCode.PATIENT_NOT_FOUND::toException);
 
         // 权限校验：患者只能更新自己的档案
         if (!patient.getUserId().equals(currentUserId)) {
-            throw new SecurityException("PERMISSION_DENIED:无权修改他人患者档案");
+            throw PatientErrorCode.PATIENT_PERMISSION_DENIED.toException();
         }
 
         PatientProfile profile = patientProfileRepository.findByPatientId(patientId)

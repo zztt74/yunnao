@@ -9,6 +9,7 @@ import com.neusoft.cloudbrain.department.repository.DepartmentRepository;
 import com.neusoft.cloudbrain.doctor.dto.*;
 import com.neusoft.cloudbrain.doctor.entity.Doctor;
 import com.neusoft.cloudbrain.doctor.entity.DoctorProfile;
+import com.neusoft.cloudbrain.doctor.exception.DoctorErrorCode;
 import com.neusoft.cloudbrain.doctor.repository.DoctorProfileRepository;
 import com.neusoft.cloudbrain.doctor.repository.DoctorRepository;
 import lombok.RequiredArgsConstructor;
@@ -56,16 +57,14 @@ public class DoctorService {
     public DoctorResponse createDoctor(DoctorCreateRequest request) {
         // 检查用户名唯一性
         if (userAccountRepository.existsByUsername(request.username())) {
-            throw new IllegalArgumentException("USER_USERNAME_DUPLICATED:用户名已存在");
+            throw DoctorErrorCode.USER_USERNAME_DUPLICATED.toException();
         }
 
         // 校验科室存在且启用
         Department department = departmentRepository.findById(request.departmentId())
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "DEPARTMENT_NOT_FOUND:科室不存在"));
+                .orElseThrow(DoctorErrorCode.DEPARTMENT_NOT_FOUND::toException);
         if (!"ENABLED".equals(department.getStatus())) {
-            throw new IllegalArgumentException(
-                    "DEPARTMENT_DISABLED:科室已停用，不能添加医生");
+            throw DoctorErrorCode.DEPARTMENT_DISABLED.toException();
         }
 
         // 创建用户账号
@@ -86,7 +85,7 @@ public class DoctorService {
 
         // 分配医生角色
         Role doctorRole = roleRepository.findByName("DOCTOR")
-                .orElseThrow(() -> new IllegalStateException("SYSTEM_INTERNAL_ERROR:医生角色未初始化"));
+                .orElseThrow(DoctorErrorCode.SYSTEM_ROLE_NOT_INITIALIZED::toException);
         userAccount.setRoles(Set.of(doctorRole));
 
         userAccount = userAccountRepository.save(userAccount);
@@ -125,8 +124,7 @@ public class DoctorService {
     @Transactional(readOnly = true)
     public DoctorResponse getDoctorById(Long id) {
         Doctor doctor = doctorRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "DOCTOR_NOT_FOUND:医生不存在"));
+                .orElseThrow(DoctorErrorCode.DOCTOR_NOT_FOUND::toException);
         Department department = departmentRepository.findById(doctor.getDepartmentId())
                 .orElse(null);
         DoctorProfile profile = doctorProfileRepository.findByDoctorId(id).orElse(null);
@@ -181,13 +179,11 @@ public class DoctorService {
     @Transactional
     public DoctorResponse updateDoctor(Long id, DoctorUpdateRequest request) {
         Doctor doctor = doctorRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "DOCTOR_NOT_FOUND:医生不存在"));
+                .orElseThrow(DoctorErrorCode.DOCTOR_NOT_FOUND::toException);
 
         // 校验科室
         Department department = departmentRepository.findById(request.departmentId())
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "DEPARTMENT_NOT_FOUND:科室不存在"));
+                .orElseThrow(DoctorErrorCode.DEPARTMENT_NOT_FOUND::toException);
 
         doctor.setDepartmentId(request.departmentId());
         doctor.setName(request.name());
