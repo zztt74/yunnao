@@ -198,6 +198,12 @@ paths:
                     message: "Token 已失效，请重新登录"
                     data: null
                     traceId: "abc-123-def"
+                未登录:
+                  value:
+                    code: AUTH_TOKEN_REVOKED
+                    message: "未登录或 Token 已失效"
+                    data: null
+                    traceId: "abc-123-def"
 
   /api/auth/change-password:
     post:
