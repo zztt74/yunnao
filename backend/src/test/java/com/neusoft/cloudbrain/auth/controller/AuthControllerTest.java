@@ -9,6 +9,8 @@ import com.neusoft.cloudbrain.auth.security.JwtAuthenticationFilter;
 import com.neusoft.cloudbrain.auth.service.AuthService;
 import com.neusoft.cloudbrain.auth.service.JwtService;
 import com.neusoft.cloudbrain.auth.repository.UserAccountRepository;
+import com.neusoft.cloudbrain.common.exception.GlobalExceptionHandler;
+import com.neusoft.cloudbrain.common.filter.TraceIdFilter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -46,9 +48,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AuthControllerTest {
 
     @Autowired
-    private org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter handlerAdapter;
-
-    @Autowired
     private ObjectMapper objectMapper;
 
     @Autowired
@@ -64,15 +63,17 @@ class AuthControllerTest {
     private UserAccountRepository userAccountRepository;
 
     private MockMvc mockMvc;
+
     private LoginRequest validLoginRequest;
     private ChangePasswordRequest validChangePasswordRequest;
 
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(new AuthController(authService))
-                .setControllerAdvice(new com.neusoft.cloudbrain.common.exception.GlobalExceptionHandler())
-                .addFilters(filterChainProxy)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .addFilters(new TraceIdFilter(), filterChainProxy)
                 .build();
+
         validLoginRequest = new LoginRequest("testuser", "Password123!");
         validChangePasswordRequest = new ChangePasswordRequest("OldPassword123!", "NewPassword123!");
     }
@@ -152,5 +153,52 @@ class AuthControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(validChangePasswordRequest)))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("POST /api/auth/login - 响应头应包含 X-Trace-Id")
+    void login_shouldReturnTraceIdHeader() throws Exception {
+        LoginResponse mockResponse = new LoginResponse(
+                "jwt.token",
+                "Bearer",
+                1L,
+                "testuser",
+                List.of("ADMIN"),
+                false,
+                7200L
+        );
+
+        when(authService.login(any(LoginRequest.class), anyString())).thenReturn(mockResponse);
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(validLoginRequest)))
+                .andExpect(status().isOk())
+                .andExpect(header().exists("X-Trace-Id"));
+    }
+
+    @Test
+    @DisplayName("POST /api/auth/login - 自定义 X-Trace-Id 应被回传")
+    void login_customTraceId_shouldReturnSameTraceId() throws Exception {
+        LoginResponse mockResponse = new LoginResponse(
+                "jwt.token",
+                "Bearer",
+                1L,
+                "testuser",
+                List.of("ADMIN"),
+                false,
+                7200L
+        );
+
+        when(authService.login(any(LoginRequest.class), anyString())).thenReturn(mockResponse);
+
+        String customTraceId = "my-trace-id-123";
+        mockMvc.perform(post("/api/auth/login")
+                        .header("X-Trace-Id", customTraceId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(validLoginRequest)))
+                .andExpect(status().isOk())
+                .andExpect(header().string("X-Trace-Id", customTraceId))
+                .andExpect(jsonPath("$.traceId").value(customTraceId));
     }
 }
