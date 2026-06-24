@@ -17,6 +17,11 @@ body {
   min-height: 100vh;
 }
 
+/** 首页全屏：移除默认滚动条 */
+body:has(.home-page) {
+  overflow: hidden;
+}
+
 a {
   color: inherit;
   text-decoration: none;

@@ -2,33 +2,67 @@
 import { reactive, ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { useAuthStore } from '@/stores/auth'
+import dayjs from 'dayjs'
 
 const router = useRouter()
-const authStore = useAuthStore()
 
-/** 记住账号存储 key（仅存账号，不存密码，符合安全规范） */
-const REMEMBER_KEY = 'cloud-brain.remember-username'
-
-/** 登录表单 */
-const loginForm = reactive({
+const registerForm = reactive({
   username: '',
   password: '',
-  rememberMe: false,
+  confirmPassword: '',
+  realName: '',
+  phone: '',
+  gender: 'MALE',
+  birthDate: '',
 })
 
-/** 表单加载状态 */
 const loading = ref(false)
-
-/** 表单引用 */
 const formRef = ref()
 
-/** 表单校验规则 */
+const validateConfirmPassword = (_rule: any, value: string, callback: any) => {
+  if (value === '') {
+    callback(new Error('请再次输入密码'))
+  } else if (value !== registerForm.password) {
+    callback(new Error('两次输入的密码不一致'))
+  } else {
+    callback()
+  }
+}
+
+const validatePhone = (_rule: any, value: string, callback: any) => {
+  const phoneReg = /^1[3-9]\d{9}$/
+  if (!value) {
+    callback(new Error('请输入手机号'))
+  } else if (!phoneReg.test(value)) {
+    callback(new Error('请输入正确的手机号'))
+  } else {
+    callback()
+  }
+}
+
 const rules = {
-  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
+  username: [
+    { required: true, message: '请输入用户名', trigger: 'blur' },
+    { min: 3, max: 20, message: '用户名长度为 3-20 个字符', trigger: 'blur' },
+  ],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 6, message: '密码长度不少于6位', trigger: 'blur' },
+    { min: 6, message: '密码长度不少于 6 位', trigger: 'blur' },
+  ],
+  confirmPassword: [
+    { required: true, validator: validateConfirmPassword, trigger: 'blur' },
+  ],
+  realName: [
+    { required: true, message: '请输入真实姓名', trigger: 'blur' },
+  ],
+  phone: [
+    { required: true, validator: validatePhone, trigger: 'blur' },
+  ],
+  gender: [
+    { required: true, message: '请选择性别', trigger: 'change' },
+  ],
+  birthDate: [
+    { required: true, message: '请选择出生日期', trigger: 'change' },
   ],
 }
 
@@ -115,27 +149,7 @@ function resetSlider() {
   hasMoved.value = false
 }
 
-/* ========== 记住账号 ========== */
-function loadRememberedUsername() {
-  const saved = localStorage.getItem(REMEMBER_KEY)
-  if (saved) {
-    loginForm.username = saved
-    loginForm.rememberMe = true
-  }
-}
-
-function saveRememberedUsername() {
-  if (loginForm.rememberMe) {
-    localStorage.setItem(REMEMBER_KEY, loginForm.username)
-  } else {
-    localStorage.removeItem(REMEMBER_KEY)
-  }
-}
-
-/**
- * 处理登录
- */
-async function handleLogin() {
+async function handleRegister() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
 
@@ -146,89 +160,109 @@ async function handleLogin() {
 
   loading.value = true
   try {
-    try {
-      await authStore.login({
-        username: loginForm.username,
-        password: loginForm.password,
-      })
-    } catch (e: any) {
-      // 后端接口未就绪时使用演示模式
-      const msg = e?.response?.data?.message || e?.message || ''
-      console.warn('登录接口调用失败，进入演示模式：', msg)
+    // TODO: 阶段1对接后端注册接口 apiClient.post('/auth/register', registerForm)
+    ElMessage.success('注册接口待对接，当前为前端演示')
 
-      // 演示用：根据用户名模拟角色
-      const username = loginForm.username.toLowerCase()
-      let role: 'PATIENT' | 'DOCTOR' | 'ADMIN' = 'PATIENT'
-      if (username === 'admin') role = 'ADMIN'
-      else if (username === 'doctor') role = 'DOCTOR'
-
-      authStore.establishSession('mock-token', {
-        userId: 1,
-        username: loginForm.username,
-        roles: [role],
-        mustChangePassword: false,
-      })
-      ElMessage.info('演示模式登录成功')
-    }
-
-    saveRememberedUsername()
-    resetSlider()
-
-    // 根据角色跳转
-    const role = authStore.primaryRole
-    if (role === 'ADMIN') router.push('/admin')
-    else if (role === 'DOCTOR') router.push('/doctor')
-    else router.push('/patient')
+    setTimeout(() => {
+      ElMessage.success('注册成功！请登录')
+      router.push('/')
+    }, 800)
   } finally {
     loading.value = false
+    resetSlider()
   }
 }
 
-function goRegister() {
-  router.push('/register')
+function goLogin() {
+  router.push('/')
 }
-
-onMounted(() => {
-  loadRememberedUsername()
-})
 </script>
 
 <template>
-  <div class="home-page">
-    <!-- 主内容区 -->
-    <div class="home-container">
-      <!-- 左侧：平台信息 -->
-      <div class="home-branding">
-        <h1 class="home-title">智慧云脑诊疗平台</h1>
-        <p class="home-subtitle">AI 驱动的智能医疗协作系统</p>
-      </div>
+  <div class="register-page">
+    <!-- 注册卡片 -->
+    <div class="register-card">
+      <h2 class="register-card-title">账号注册</h2>
+      <el-form
+        ref="formRef"
+        :model="registerForm"
+        :rules="rules"
+        label-position="top"
+        size="default"
+        @keyup.enter="handleRegister"
+      >
+          <el-row :gutter="16">
+            <el-col :span="12">
+              <el-form-item label="用户名" prop="username">
+                <el-input
+                  v-model="registerForm.username"
+                  placeholder="请输入用户名"
+                  clearable
+                />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="真实姓名" prop="realName">
+                <el-input
+                  v-model="registerForm.realName"
+                  placeholder="请输入真实姓名"
+                  clearable
+                />
+              </el-form-item>
+            </el-col>
+          </el-row>
 
-      <!-- 右侧：登录卡片 -->
-      <div class="home-login-card">
-        <h2 class="login-title">账号登录</h2>
-        <el-form
-          ref="formRef"
-          :model="loginForm"
-          :rules="rules"
-          label-position="top"
-          size="large"
-          @keyup.enter="handleLogin"
-        >
-          <el-form-item label="用户名" prop="username">
-            <el-input
-              v-model="loginForm.username"
-              placeholder="请输入用户名"
-              :prefix-icon="'User'"
-              clearable
-            />
-          </el-form-item>
-          <el-form-item label="密码" prop="password">
-            <el-input
-              v-model="loginForm.password"
-              type="password"
-              placeholder="请输入密码"
-              :prefix-icon="'Lock'"
-              show-password
+          <el-row :gutter="16">
+            <el-col :span="12">
+              <el-form-item label="密码" prop="password">
+                <el-input
+                  v-model="registerForm.password"
+                  type="password"
+                  placeholder="请输入密码"
+                  show-password
+                />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="确认密码" prop="confirmPassword">
+                <el-input
+                  v-model="registerForm.confirmPassword"
+                  type="password"
+                  placeholder="请再次输入密码"
+                  show-password
+                />
+              </el-form-item>
+            </el-col>
+          </el-row>
+
+          <el-row :gutter="16">
+            <el-col :span="12">
+              <el-form-item label="手机号" prop="phone">
+                <el-input
+                  v-model="registerForm.phone"
+                  placeholder="请输入手机号"
+                  clearable
+                />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="性别" prop="gender">
+                <el-radio-group v-model="registerForm.gender">
+                  <el-radio value="MALE">男</el-radio>
+                  <el-radio value="FEMALE">女</el-radio>
+                </el-radio-group>
+              </el-form-item>
+            </el-col>
+          </el-row>
+
+          <el-form-item label="出生日期" prop="birthDate">
+            <el-date-picker
+              v-model="registerForm.birthDate"
+              type="date"
+              placeholder="请选择出生日期"
+              :disabled-date="(d: Date) => dayjs(d).isAfter(dayjs())"
+              value-format="YYYY-MM-DD"
+              style="width: 100%"
             />
           </el-form-item>
 
@@ -271,107 +305,46 @@ onMounted(() => {
             </div>
           </el-form-item>
 
-          <!-- 记住密码 -->
-          <el-form-item>
-            <div class="login-options">
-              <el-checkbox v-model="loginForm.rememberMe">
-                记住账号
-              </el-checkbox>
-            </div>
-          </el-form-item>
-
           <el-form-item>
             <el-button
               type="primary"
-              class="login-btn"
+              class="register-btn"
               :loading="loading"
-              @click="handleLogin"
+              @click="handleRegister"
             >
-              登 录
+              注 册
             </el-button>
           </el-form-item>
         </el-form>
 
-        <!-- 注册入口 -->
-        <div class="register-row">
-          <span class="register-hint">还没有账号？</span>
-          <a class="register-link" @click="goRegister">立即注册</a>
-        </div>
-
-        <div class="login-footer">
-          <span class="login-hint">演示账号：admin / doctor / patient</span>
+        <!-- 登录入口 -->
+        <div class="login-row">
+          <span class="login-hint-text">已有账号？</span>
+          <a class="login-link" @click="goLogin">立即登录</a>
         </div>
       </div>
-    </div>
   </div>
 </template>
 
 <style scoped>
-.home-page {
+.register-page {
   position: relative;
+  min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 100vh;
-  overflow: hidden;
-  background: url('/images/home-bg.jpg') no-repeat center center / cover;
+  background-image: url('/images/home-bg.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
 }
 
-/* 内容容器 */
-.home-container {
+/* ========== 注册卡片 ========== */
+.register-card {
   position: relative;
   z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 60px;
-  width: min(1100px, calc(100% - 80px));
-  max-width: 1200px;
-  padding: 40px;
-}
-
-/* ========== 左侧：平台品牌区 ========== */
-.home-branding {
-  flex: 1;
-  color: #ffffff;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0;
-  padding-left: 28px;
-  border-left: 4px solid #4facfe;
-  box-shadow: -8px 0 24px rgb(79 172 254 / 25%);
-}
-
-.home-title {
-  margin: 0 0 20px;
-  font-size: clamp(42px, 4.8vw, 60px);
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  line-height: 1.15;
-  color: #ffffff;
-  text-shadow:
-    0 2px 4px rgb(0 0 0 / 50%),
-    0 4px 12px rgb(0 0 0 / 40%),
-    0 8px 24px rgb(0 0 0 / 30%);
-}
-
-.home-subtitle {
-  margin: 0;
-  font-size: clamp(16px, 1.6vw, 20px);
-  font-weight: 400;
-  color: rgb(255 255 255 / 90%);
-  letter-spacing: 0.1em;
-  line-height: 1.6;
-  text-shadow:
-    0 1px 3px rgb(0 0 0 / 40%),
-    0 2px 8px rgb(0 0 0 / 25%);
-}
-
-/* ========== 右侧：登录卡片 ========== */
-.home-login-card {
-  width: 380px;
-  padding: 40px 36px;
+  width: 520px;
+  padding: 36px 40px;
   border-radius: 16px;
   background: rgb(255 255 255 / 35%);
   border: 1px solid rgb(255 255 255 / 45%);
@@ -380,37 +353,20 @@ onMounted(() => {
   -webkit-backdrop-filter: blur(16px);
 }
 
-.login-title {
-  margin: 0 0 28px;
+.register-card-title {
+  margin: 0 0 24px;
   font-size: 24px;
   font-weight: 700;
   color: #1a2b4a;
   text-align: center;
 }
 
-.login-btn {
+.register-btn {
   width: 100%;
   height: 44px;
   font-size: 16px;
   letter-spacing: 0.2em;
   border-radius: 8px;
-}
-
-.login-footer {
-  margin-top: 16px;
-  text-align: center;
-}
-
-.login-hint {
-  font-size: 12px;
-  color: rgb(0 0 0 / 45%);
-}
-
-/* ========== 记住账号 ========== */
-.login-options {
-  display: flex;
-  justify-content: flex-end;
-  width: 100%;
 }
 
 /* ========== 滑块验证 ========== */
@@ -574,58 +530,40 @@ onMounted(() => {
   }
 }
 
-/* ========== 注册入口 ========== */
-.register-row {
+/* ========== 登录入口 ========== */
+.login-row {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   margin-top: 4px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid rgb(0 0 0 / 8%);
+  padding-top: 12px;
+  border-top: 1px solid rgb(0 0 0 / 8%);
 }
 
-.register-hint {
+.login-hint-text {
   font-size: 13px;
   color: rgb(0 0 0 / 55%);
 }
 
-.register-link {
+.login-link {
   font-size: 13px;
   color: #1a73e8;
   cursor: pointer;
   font-weight: 500;
 }
 
-.register-link:hover {
+.login-link:hover {
   color: #4a90d9;
   text-decoration: underline;
 }
 
-/* ========== 响应式适配 ========== */
-@media (max-width: 900px) {
-  .home-container {
-    flex-direction: column;
-    gap: 36px;
-    padding: 24px;
-  }
-
-  .home-branding {
-    text-align: center;
-  }
-
-  .home-description {
-    margin-left: auto;
-    margin-right: auto;
-  }
-
-  .home-features {
-    justify-content: center;
-  }
-
-  .home-login-card {
-    width: 100%;
-    max-width: 400px;
+/* ========== 响应式 ========== */
+@media (max-width: 640px) {
+  .register-card {
+    width: calc(100% - 40px);
+    max-width: 420px;
+    padding: 28px 24px;
   }
 }
 </style>
