@@ -9,6 +9,8 @@ import com.neusoft.cloudbrain.auth.security.JwtAuthenticationFilter;
 import com.neusoft.cloudbrain.auth.service.AuthService;
 import com.neusoft.cloudbrain.auth.service.JwtService;
 import com.neusoft.cloudbrain.auth.repository.UserAccountRepository;
+import com.neusoft.cloudbrain.common.exception.GlobalExceptionHandler;
+import com.neusoft.cloudbrain.common.filter.TraceIdFilter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -17,7 +19,9 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.web.FilterChainProxy;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.util.List;
 
@@ -41,9 +45,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AuthControllerTest {
 
     @Autowired
-    private MockMvc mockMvc;
-
-    @Autowired
     private ObjectMapper objectMapper;
 
     @MockBean
@@ -55,11 +56,21 @@ class AuthControllerTest {
     @MockBean
     private UserAccountRepository userAccountRepository;
 
+    @Autowired
+    private FilterChainProxy filterChainProxy;
+
+    private MockMvc mockMvc;
+
     private LoginRequest validLoginRequest;
     private ChangePasswordRequest validChangePasswordRequest;
 
     @BeforeEach
     void setUp() {
+        mockMvc = MockMvcBuilders.standaloneSetup(new AuthController(authService))
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .addFilters(new TraceIdFilter(), filterChainProxy)
+                .build();
+
         validLoginRequest = new LoginRequest("testuser", "Password123!");
         validChangePasswordRequest = new ChangePasswordRequest("OldPassword123!", "NewPassword123!");
     }
