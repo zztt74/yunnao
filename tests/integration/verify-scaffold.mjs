@@ -47,10 +47,14 @@ if (
 }
 
 const openapi = readFileSync(resolve(root, 'contracts/openapi.yaml'), 'utf8')
-// paths: {} 检查仅对 push 到 main 分支（Stage 0）生效，PR 和功能分支跳过
-const isMainPush = process.env.GITHUB_REF === 'refs/heads/main'
-if (isMainPush && !openapi.includes('paths: {}')) {
-  throw new Error('Stage 0 不得提前定义未经批准的业务接口')
+const eventName = process.env.GITHUB_EVENT_NAME || ''
+const isMainPush = eventName === 'push' && (process.env.GITHUB_REF || '').endsWith('/main')
+
+// Stage 0 scaffold: main 分支不得提前定义未经批准的业务接口
+if (isMainPush) {
+  if (!openapi.includes('paths: {}')) {
+    throw new Error('Stage 0 不得提前定义未经批准的业务接口')
+  }
 }
 
 const commonSchema = readFileSync(

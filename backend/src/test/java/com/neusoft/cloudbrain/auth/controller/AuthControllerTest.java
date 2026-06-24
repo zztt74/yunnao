@@ -34,6 +34,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * AuthController 单元测试
  *
+ * 使用 @WebMvcTest + 手动构建带安全过滤器的 MockMvc，
+ * 确保受保护接口在无 Token 时正确返回 401。
+ *
  * 测试场景（来自 41_质量测试与完成定义.md 11.1）：
  * - 登录接口参数校验
  * - Token 缺失时返回 401
@@ -47,6 +50,9 @@ class AuthControllerTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private FilterChainProxy filterChainProxy;
+
     @MockBean
     private AuthService authService;
 
@@ -55,9 +61,6 @@ class AuthControllerTest {
 
     @MockBean
     private UserAccountRepository userAccountRepository;
-
-    @Autowired
-    private FilterChainProxy filterChainProxy;
 
     private MockMvc mockMvc;
 
@@ -91,7 +94,7 @@ class AuthControllerTest {
     @Test
     @DisplayName("POST /api/auth/login - 密码太短应返回 400")
     void login_passwordTooShort_shouldReturn400() throws Exception {
-        LoginRequest request = new LoginRequest("testuser", "short"); // 少于 8 位
+        LoginRequest request = new LoginRequest("testuser", "short");
 
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -134,17 +137,17 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.data.tokenType").value("Bearer"));
     }
 
-    // ========== 受保护接口测试 ==========
+    // ========== 受保护接口测试（需要 Bearer Token）==========
 
     @Test
-    @DisplayName("POST /api/auth/logout - 无 Token 应返回未授权")
+    @DisplayName("POST /api/auth/logout - 无 Token 应返回 401")
     void logout_noToken_shouldReturnUnauthorized() throws Exception {
         mockMvc.perform(post("/api/auth/logout"))
                 .andExpect(status().isUnauthorized());
     }
 
     @Test
-    @DisplayName("POST /api/auth/change-password - 无 Token 应返回未授权")
+    @DisplayName("POST /api/auth/change-password - 无 Token 应返回 401")
     void changePassword_noToken_shouldReturnUnauthorized() throws Exception {
         mockMvc.perform(post("/api/auth/change-password")
                         .contentType(MediaType.APPLICATION_JSON)

@@ -3,8 +3,14 @@ info:
   title: 智慧云脑诊疗平台 API
   version: 0.1.0
   description: |
-    Stage 0 契约根文件。当前只冻结公共响应、安全方案和分页结构，
-    不包含未经任务卡批准的医疗业务接口。
+    阶段一：用户认证与权限管理
+
+    当前包含接口：
+    - POST /api/auth/login — 用户登录
+    - POST /api/auth/logout — 退出登录
+    - POST /api/auth/change-password — 修改密码
+
+    契约来源：contracts/30_接口数据与错误契约.md 第11节
 servers:
   - url: http://localhost:8080
     description: 本地后端
@@ -1401,6 +1407,7 @@ paths:
                         type: array
                         items:
                           $ref: './schemas/schedule_appointment.yaml#/AppointmentResponse'
+
 components:
   securitySchemes:
     bearerAuth:
