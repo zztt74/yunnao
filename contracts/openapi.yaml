@@ -3,20 +3,25 @@ info:
   title: 智慧云脑诊疗平台 API
   version: 0.1.0
   description: |
-    阶段一：用户认证与权限管理
+    阶段二：基础数据管理（认证 + 科室 + 患者 + 医生 + 药品）
 
     当前包含接口：
-    - POST /api/auth/login — 用户登录
-    - POST /api/auth/logout — 退出登录
-    - POST /api/auth/change-password — 修改密码
+    - 认证模块：login / logout / change-password（3 个）
+    - 科室模块：tree / list / create / update（4 个）
+    - 患者模块：register / me / detail / update / profile / search（6 个）
+    - 医生模块：list / create / update / by-department（4 个）
+    - 药品模块：list / detail / by-code / by-category / interaction / contraindications（7 个）
 
-    契约来源：contracts/30_接口数据与错误契约.md 第11节
+    契约来源：contracts/30_接口数据与错误契约.md 第11节 + 第12节
 servers:
   - url: http://localhost:8080
     description: 本地后端
   - url: http://localhost:4010
     description: Prism API Mock Server
 paths:
+  # ============================================================
+  # 认证接口（阶段一）
+  # ============================================================
   /api/auth/login:
     post:
       tags:
@@ -275,6 +280,849 @@ paths:
                     message: "未登录或 Token 已失效"
                     data: null
                     traceId: "abc-123-def"
+
+  # ============================================================
+  # 科室接口
+  # ============================================================
+  /api/departments/tree:
+    get:
+      tags:
+        - 科室
+      summary: 获取科室树形结构
+      operationId: getDepartmentTree
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 科室树
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: './schemas/base_data.yaml#/DepartmentResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/departments:
+    get:
+      tags:
+        - 科室
+      summary: 获取科室扁平列表
+      operationId: getDepartmentList
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 科室列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: './schemas/base_data.yaml#/DepartmentResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+    post:
+      tags:
+        - 科室
+      summary: 创建科室
+      description: 管理员创建科室
+      operationId: createDepartment
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/base_data.yaml#/DepartmentCreateRequest'
+      responses:
+        '200':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: './schemas/base_data.yaml#/DepartmentResponse'
+        '409':
+          description: 科室编码重复或父科室不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/departments/{id}:
+    get:
+      tags:
+        - 科室
+      summary: 获取科室详情
+      operationId: getDepartmentById
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 科室详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: './schemas/base_data.yaml#/DepartmentResponse'
+        '404':
+          description: 科室不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+    put:
+      tags:
+        - 科室
+      summary: 更新科室
+      description: 管理员更新科室信息
+      operationId: updateDepartment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/base_data.yaml#/DepartmentUpdateRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: './schemas/base_data.yaml#/DepartmentResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  # ============================================================
+  # 患者接口
+  # ============================================================
+  /api/patients/register:
+    post:
+      tags:
+        - 患者
+      summary: 患者注册
+      description: 患者自助注册建档
+      operationId: registerPatient
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/base_data.yaml#/PatientRegisterRequest'
+      responses:
+        '200':
+          description: 注册成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: './schemas/base_data.yaml#/PatientResponse'
+        '409':
+          description: 用户名或手机号已被使用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/patients/me:
+    get:
+      tags:
+        - 患者
+      summary: 获取当前登录患者信息
+      operationId: getCurrentPatient
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 患者信息
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: './schemas/base_data.yaml#/PatientResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/patients/{id}:
+    get:
+      tags:
+        - 患者
+      summary: 获取患者详情
+      description: 权限校验：患者只能查看自己的信息
+      operationId: getPatientById
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 患者详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: './schemas/base_data.yaml#/PatientResponse'
+        '403':
+          description: 无权限访问其他患者数据
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '404':
+          description: 患者不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+    put:
+      tags:
+        - 患者
+      summary: 更新患者信息
+      description: 患者只能更新自己的信息
+      operationId: updatePatient
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/base_data.yaml#/PatientUpdateRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: './schemas/base_data.yaml#/PatientResponse'
+        '403':
+          description: 无权限修改其他患者数据
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/patients/{id}/profile:
+    get:
+      tags:
+        - 患者
+      summary: 获取患者档案
+      operationId: getPatientProfile
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 患者档案
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: './schemas/base_data.yaml#/PatientProfileResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+    put:
+      tags:
+        - 患者
+      summary: 更新患者档案
+      operationId: updatePatientProfile
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/base_data.yaml#/PatientProfileUpdateRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: './schemas/base_data.yaml#/PatientProfileResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/patients/search:
+    get:
+      tags:
+        - 患者
+      summary: 管理员搜索患者
+      description: 按姓名或手机号搜索
+      operationId: searchPatients
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: name
+          in: query
+          schema:
+            type: string
+        - name: phone
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 搜索结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: './schemas/base_data.yaml#/PatientResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  # ============================================================
+  # 医生接口
+  # ============================================================
+  /api/doctors:
+    get:
+      tags:
+        - 医生
+      summary: 获取医生列表（分页）
+      operationId: getDoctorList
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: name
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 医生列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PageResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+    post:
+      tags:
+        - 医生
+      summary: 创建医生
+      description: 管理员创建医生账号
+      operationId: createDoctor
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/base_data.yaml#/DoctorCreateRequest'
+      responses:
+        '200':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: './schemas/base_data.yaml#/DoctorResponse'
+        '409':
+          description: 父科室停用或用户名已存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/doctors/{id}:
+    get:
+      tags:
+        - 医生
+      summary: 获取医生详情
+      operationId: getDoctorById
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 医生详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: './schemas/base_data.yaml#/DoctorResponse'
+        '404':
+          description: 医生不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+    put:
+      tags:
+        - 医生
+      summary: 更新医生信息
+      operationId: updateDoctor
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/base_data.yaml#/DoctorUpdateRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: './schemas/base_data.yaml#/DoctorResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/doctors/by-department/{deptId}:
+    get:
+      tags:
+        - 医生
+      summary: 按科室查询医生
+      operationId: getDoctorsByDepartment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: deptId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 科室下医生列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: './schemas/base_data.yaml#/DoctorResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  # ============================================================
+  # 药品接口
+  # ============================================================
+  /api/drugs:
+    get:
+      tags:
+        - 药品
+      summary: 获取药品列表（分页）
+      operationId: getDrugList
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: name
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 药品列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PageResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/drugs/{id}:
+    get:
+      tags:
+        - 药品
+      summary: 获取药品详情
+      description: 含成分、剂量规则和禁忌
+      operationId: getDrugById
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 药品详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: './schemas/base_data.yaml#/DrugResponse'
+        '404':
+          description: 药品不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/drugs/by-code/{code}:
+    get:
+      tags:
+        - 药品
+      summary: 按编码查询药品
+      operationId: getDrugByCode
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 药品详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: './schemas/base_data.yaml#/DrugResponse'
+        '404':
+          description: 药品不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/drugs/by-category:
+    get:
+      tags:
+        - 药品
+      summary: 按分类查询药品
+      operationId: getDrugsByCategory
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: category
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [WESTERN, CHINESE]
+      responses:
+        '200':
+          description: 药品列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: './schemas/base_data.yaml#/DrugResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/drugs/interaction:
+    get:
+      tags:
+        - 药品
+      summary: 查询药品相互作用
+      operationId: getDrugInteraction
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: drugACode
+          in: query
+          schema:
+            type: string
+        - name: drugBCode
+          in: query
+          schema:
+            type: string
+        - name: drugCode
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 相互作用列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: './schemas/base_data.yaml#/DrugInteractionResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/drugs/contraindications/{drugCode}:
+    get:
+      tags:
+        - 药品
+      summary: 查询药品禁忌
+      operationId: getDrugContraindications
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: drugCode
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: conditionType
+          in: query
+          schema:
+            type: string
+            enum: [ALLERGY, DISEASE, PREGNANCY, AGE]
+      responses:
+        '200':
+          description: 禁忌列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            conditionType:
+                              type: string
+                            conditionValue:
+                              type: string
+                            description:
+                              type: string
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
 
 components:
   securitySchemes:
