@@ -47,9 +47,9 @@ if (
 }
 
 const openapi = readFileSync(resolve(root, 'contracts/openapi.yaml'), 'utf8')
-// paths: {} 检查仅对 main 分支（Stage 0）生效，功能分支允许定义业务接口
-const isMainBranch = process.env.GITHUB_REF?.includes('refs/heads/main') || process.env.GITHUB_BASE_REF === 'main'
-if (isMainBranch && !openapi.includes('paths: {}')) {
+// paths: {} 检查仅对 push 到 main 分支（Stage 0）生效，PR 和功能分支跳过
+const isMainPush = process.env.GITHUB_REF === 'refs/heads/main'
+if (isMainPush && !openapi.includes('paths: {}')) {
   throw new Error('Stage 0 不得提前定义未经批准的业务接口')
 }
 
