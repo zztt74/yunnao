@@ -33,6 +33,7 @@ paths:
         - exp: 过期时间（+2 小时）
         - jti: 唯一标识
       operationId: login
+      security: []
       requestBody:
         required: true
         content:
@@ -415,6 +416,7 @@ paths:
       summary: 患者注册
       description: 患者自助注册建档
       operationId: registerPatient
+      security: []
       requestBody:
         required: true
         content:
@@ -926,7 +928,7 @@ paths:
                         items:
                           $ref: './schemas/base_data.yaml#/DrugInteractionResponse'
 
-  /api/drugs/{code}/contraindications:
+  /api/drugs/contraindications/{code}:
     get:
       tags:
         - 药品
@@ -1096,7 +1098,7 @@ paths:
                     properties:
                       data:
                         $ref: './schemas/schedule_appointment.yaml#/ScheduleResponse'
-  /api/schedules/doctor/{doctorId}:
+  /api/schedules/doctor-list/{doctorId}:
     get:
       tags:
         - 排班
@@ -1125,7 +1127,7 @@ paths:
                         type: array
                         items:
                           $ref: './schemas/schedule_appointment.yaml#/ScheduleResponse'
-  /api/schedules/department/{departmentId}:
+  /api/schedules/dept-list/{departmentId}:
     get:
       tags:
         - 排班
@@ -1312,7 +1314,7 @@ paths:
                     properties:
                       data:
                         $ref: './schemas/schedule_appointment.yaml#/AppointmentResponse'
-  /api/appointments/patient/{patientId}:
+  /api/appointments/patient-list/{patientId}:
     get:
       tags:
         - 挂号
@@ -1341,7 +1343,7 @@ paths:
                         type: array
                         items:
                           $ref: './schemas/schedule_appointment.yaml#/AppointmentResponse'
-  /api/appointments/doctor/{doctorId}:
+  /api/appointments/doctor-list/{doctorId}:
     get:
       tags:
         - 挂号

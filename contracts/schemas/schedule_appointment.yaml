@@ -106,12 +106,10 @@ ScheduleResponse:
       type: string
       enum: [AVAILABLE, FULL, CANCELLED, COMPLETED]
     cancelledAt:
-      type: string
+      type: [string, 'null']
       format: date-time
-      nullable: true
     cancelReason:
-      type: string
-      nullable: true
+      type: [string, 'null']
     createdAt:
       type: string
       format: date-time
@@ -180,20 +178,16 @@ AppointmentResponse:
       type: string
       format: date-time
     checkInTime:
-      type: string
+      type: [string, 'null']
       format: date-time
-      nullable: true
     cancellationReason:
-      type: string
-      nullable: true
+      type: [string, 'null']
     cancellationSource:
-      type: string
+      type: [string, 'null']
       enum: [PATIENT, SCHEDULE, ADMIN]
-      nullable: true
     cancelledAt:
-      type: string
+      type: [string, 'null']
       format: date-time
-      nullable: true
     createdAt:
       type: string
       format: date-time
