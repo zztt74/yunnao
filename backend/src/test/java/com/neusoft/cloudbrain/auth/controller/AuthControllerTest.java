@@ -2,6 +2,7 @@ package com.neusoft.cloudbrain.auth.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.neusoft.cloudbrain.auth.config.SecurityConfig;
+import com.neusoft.cloudbrain.common.filter.TraceIdFilter;
 import com.neusoft.cloudbrain.auth.dto.ChangePasswordRequest;
 import com.neusoft.cloudbrain.auth.dto.LoginRequest;
 import com.neusoft.cloudbrain.auth.dto.LoginResponse;
@@ -17,15 +18,20 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.context.WebApplicationContext;
 
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup;
 
 /**
  * AuthController 单元测试
@@ -36,15 +42,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * - 正确登录返回 Token
  */
 @WebMvcTest(AuthController.class)
-@Import({SecurityConfig.class, JwtAuthenticationFilter.class})
+@Import({SecurityConfig.class, JwtAuthenticationFilter.class, TraceIdFilter.class})
 @DisplayName("AuthController - 认证接口测试")
 class AuthControllerTest {
 
     @Autowired
-    private MockMvc mockMvc;
+    private WebApplicationContext context;
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private TraceIdFilter traceIdFilter;
 
     @MockBean
     private AuthService authService;
@@ -55,11 +64,16 @@ class AuthControllerTest {
     @MockBean
     private UserAccountRepository userAccountRepository;
 
+    private MockMvc mockMvc;
     private LoginRequest validLoginRequest;
     private ChangePasswordRequest validChangePasswordRequest;
 
     @BeforeEach
     void setUp() {
+        mockMvc = webAppContextSetup(context)
+                .apply(SecurityMockMvcConfigurers.springSecurity())
+                .addFilters(traceIdFilter)
+                .build();
         validLoginRequest = new LoginRequest("testuser", "Password123!");
         validChangePasswordRequest = new ChangePasswordRequest("OldPassword123!", "NewPassword123!");
     }
