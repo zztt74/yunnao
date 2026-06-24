@@ -23,9 +23,7 @@ DepartmentCreateRequest:
       description: 科室名称
       example: 心血管内科
     parentId:
-      type: integer
-      format: int64
-      nullable: true
+      type: [integer, 'null']
       description: 父科室 ID，顶级科室为 null
     level:
       type: integer
@@ -50,9 +48,7 @@ DepartmentUpdateRequest:
       maxLength: 64
       description: 科室名称
     parentId:
-      type: integer
-      format: int64
-      nullable: true
+      type: [integer, 'null']
     level:
       type: integer
     sortOrder:
@@ -75,9 +71,7 @@ DepartmentResponse:
     name:
       type: string
     parentId:
-      type: integer
-      format: int64
-      nullable: true
+      type: [integer, 'null']
     level:
       type: integer
     sortOrder:
@@ -376,8 +370,7 @@ DrugResponse:
           amount:
             type: string
     dosageRule:
-      type: object
-      nullable: true
+      type: [object, 'null']
       properties:
         minDose:
           type: number

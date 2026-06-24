@@ -300,6 +300,12 @@ paths:
                         type: array
                         items:
                           $ref: './schemas/base_data.yaml#/DepartmentResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
 
   /api/departments:
     get:
@@ -323,6 +329,12 @@ paths:
                         type: array
                         items:
                           $ref: './schemas/base_data.yaml#/DepartmentResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
     post:
       tags:
         - 科室
@@ -422,6 +434,12 @@ paths:
                     properties:
                       data:
                         $ref: './schemas/base_data.yaml#/DepartmentResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
 
   # ============================================================
   # 患者接口
@@ -433,6 +451,7 @@ paths:
       summary: 患者注册
       description: 患者自助注册建档
       operationId: registerPatient
+      security: []
       requestBody:
         required: true
         content:
@@ -478,6 +497,12 @@ paths:
                     properties:
                       data:
                         $ref: './schemas/base_data.yaml#/PatientResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
 
   /api/patients/{id}:
     get:
@@ -586,6 +611,12 @@ paths:
                     properties:
                       data:
                         $ref: './schemas/base_data.yaml#/PatientProfileResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
     put:
       tags:
         - 患者
@@ -618,6 +649,12 @@ paths:
                     properties:
                       data:
                         $ref: './schemas/base_data.yaml#/PatientProfileResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
 
   /api/patients/search:
     get:
@@ -651,6 +688,12 @@ paths:
                         type: array
                         items:
                           $ref: './schemas/base_data.yaml#/PatientResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
 
   # ============================================================
   # 医生接口
@@ -690,6 +733,12 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/PageResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
     post:
       tags:
         - 医生
@@ -788,6 +837,12 @@ paths:
                     properties:
                       data:
                         $ref: './schemas/base_data.yaml#/DoctorResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
 
   /api/doctors/by-department/{deptId}:
     get:
@@ -818,6 +873,12 @@ paths:
                         type: array
                         items:
                           $ref: './schemas/base_data.yaml#/DoctorResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
 
   # ============================================================
   # 药品接口
@@ -857,6 +918,12 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/PageResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
 
   /api/drugs/{id}:
     get:
@@ -955,6 +1022,12 @@ paths:
                         type: array
                         items:
                           $ref: './schemas/base_data.yaml#/DrugResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
 
   /api/drugs/interaction:
     get:
@@ -991,8 +1064,14 @@ paths:
                         type: array
                         items:
                           $ref: './schemas/base_data.yaml#/DrugInteractionResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
 
-  /api/drugs/{code}/contraindications:
+  /api/drugs/contraindications/{drugCode}:
     get:
       tags:
         - 药品
@@ -1001,7 +1080,7 @@ paths:
       security:
         - bearerAuth: []
       parameters:
-        - name: code
+        - name: drugCode
           in: path
           required: true
           schema:
@@ -1032,6 +1111,12 @@ paths:
                               type: string
                             description:
                               type: string
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
 
 components:
   securitySchemes:
