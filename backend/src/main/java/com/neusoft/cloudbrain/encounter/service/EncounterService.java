@@ -20,6 +20,7 @@ import com.neusoft.cloudbrain.encounter.repository.EncounterDiagnosisRepository;
 import com.neusoft.cloudbrain.encounter.repository.EncounterRepository;
 import com.neusoft.cloudbrain.examination.service.ExaminationService;
 import com.neusoft.cloudbrain.medicalrecord.service.MedicalRecordService;
+import com.neusoft.cloudbrain.prescription.service.PrescriptionService;
 import com.neusoft.cloudbrain.patient.entity.Patient;
 import com.neusoft.cloudbrain.patient.repository.PatientRepository;
 import lombok.RequiredArgsConstructor;
@@ -72,6 +73,7 @@ public class EncounterService {
     private final DepartmentRepository departmentRepository;
     private final MedicalRecordService medicalRecordService;
     private final ExaminationService examinationService;
+    private final PrescriptionService prescriptionService;
 
     // ============================================================
     // 状态机：开始接诊 CREATED → IN_PROGRESS
@@ -436,13 +438,12 @@ public class EncounterService {
      * 4. 检查处方状态（如有）
      *
      * 处方可不存在；存在处方时，其业务状态必须为 CONFIRMED 或 VOIDED。
-     * TODO: prescription 模块实现后接入正式校验
+     * DRAFT 状态处方阻塞就诊完成。
      */
     private void validatePrescriptionStatus(Encounter encounter) {
-        // prescription 模块尚未实现
-        // 实现后应检查：不存在 status=DRAFT 的 Prescription 关联此 encounter
-        // 当前阶段：暂不校验，待 prescription 模块完成后接入
-        log.debug("处方状态校验: encounterId={} (prescription 模块待实现)", encounter.getId());
+        if (prescriptionService.hasPendingPrescriptions(encounter.getId())) {
+            throw EncounterErrorCode.ENCOUNTER_PRESCRIPTION_PENDING.toException();
+        }
     }
 
     // ============================================================
