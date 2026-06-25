@@ -1,35 +1,94 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
+import { ElMessage } from 'element-plus'
+import { login as apiLogin, logout as apiLogout } from '@/api/auth'
+import type { LoginRequest, UserInfo, UserRole } from '@/types/auth'
 
-export type UserRole = 'PATIENT' | 'DOCTOR' | 'ADMIN'
+const TOKEN_KEY = 'cloud-brain.access-token'
+const USER_KEY = 'cloud-brain.user'
+
+function readUserFromStorage(): UserInfo | null {
+  const raw = sessionStorage.getItem(USER_KEY)
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as UserInfo
+  } catch {
+    return null
+  }
+}
 
 export const useAuthStore = defineStore('auth', () => {
-  const accessToken = ref(sessionStorage.getItem('cloud-brain.access-token'))
-  const role = ref<UserRole | null>(
-    sessionStorage.getItem('cloud-brain.role') as UserRole | null,
-  )
+  const accessToken = ref<string | null>(sessionStorage.getItem(TOKEN_KEY))
+  const userInfo = ref<UserInfo | null>(readUserFromStorage())
 
   const isAuthenticated = computed(() => Boolean(accessToken.value))
 
-  function establishSession(token: string, nextRole: UserRole) {
+  const isPatient = computed(() => userInfo.value?.roles?.includes('PATIENT') ?? false)
+  const isDoctor = computed(() => userInfo.value?.roles?.includes('DOCTOR') ?? false)
+  const isAdmin = computed(() => userInfo.value?.roles?.includes('ADMIN') ?? false)
+
+  const primaryRole = computed<UserRole | null>(() => {
+    const roles = userInfo.value?.roles
+    if (!roles || roles.length === 0) return null
+    if (roles.includes('ADMIN')) return 'ADMIN'
+    if (roles.includes('DOCTOR')) return 'DOCTOR'
+    return 'PATIENT'
+  })
+
+  const mustChangePassword = computed(() => userInfo.value?.mustChangePassword ?? false)
+
+  function hasRole(role: UserRole): boolean {
+    return userInfo.value?.roles?.includes(role) ?? false
+  }
+
+  function establishSession(token: string, user: UserInfo) {
     accessToken.value = token
-    role.value = nextRole
-    sessionStorage.setItem('cloud-brain.access-token', token)
-    sessionStorage.setItem('cloud-brain.role', nextRole)
+    userInfo.value = user
+    sessionStorage.setItem(TOKEN_KEY, token)
+    sessionStorage.setItem(USER_KEY, JSON.stringify(user))
   }
 
   function clearSession() {
     accessToken.value = null
-    role.value = null
-    sessionStorage.removeItem('cloud-brain.access-token')
-    sessionStorage.removeItem('cloud-brain.role')
+    userInfo.value = null
+    sessionStorage.removeItem(TOKEN_KEY)
+    sessionStorage.removeItem(USER_KEY)
+  }
+
+  async function login(payload: LoginRequest): Promise<void> {
+    const res = await apiLogin(payload)
+    const user: UserInfo = {
+      userId: res.userId,
+      username: res.username,
+      roles: res.roles,
+      mustChangePassword: res.mustChangePassword,
+    }
+    establishSession(res.accessToken, user)
+  }
+
+  async function logout(): Promise<void> {
+    try {
+      await apiLogout()
+    } catch (e) {
+      // ignore
+    }
+    clearSession()
+    ElMessage.success('已退出登录')
   }
 
   return {
     accessToken,
-    role,
+    userInfo,
     isAuthenticated,
+    isPatient,
+    isDoctor,
+    isAdmin,
+    primaryRole,
+    mustChangePassword,
+    hasRole,
     establishSession,
     clearSession,
+    login,
+    logout,
   }
 })
