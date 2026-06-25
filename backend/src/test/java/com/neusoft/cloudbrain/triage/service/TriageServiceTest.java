@@ -249,6 +249,81 @@ class TriageServiceTest {
     }
 
     @Test
+    @DisplayName("AI 超时降级 - AI_TIMEOUT 时转人工选择")
+    void analyze_shouldDegradeWhenAITimeout() {
+        TriageAnalyzeRequest request = new TriageAnalyzeRequest(
+                1L, "头痛、发热三天", "三天", "无补充");
+
+        when(patientRepository.findById(1L)).thenReturn(Optional.of(testPatient));
+        when(aiTriageService.analyze(any(TriageAIRequest.class)))
+                .thenThrow(new BusinessException("AI_TIMEOUT", "AI 分诊超时", 504));
+        when(triageRecordRepository.save(any(TriageRecord.class))).thenAnswer(invocation -> {
+            TriageRecord record = invocation.getArgument(0);
+            record.setId(1L);
+            return record;
+        });
+
+        TriageAnalyzeResponse response = triageService.analyze(request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.aiStatus()).isEqualTo("FAILED");
+        assertThat(response.mappingStatus()).isEqualTo("MANUAL");
+        assertThat(response.recommendedSchedules()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("AI 非法响应降级 - AI_INVALID_RESPONSE 时转人工选择")
+    void analyze_shouldDegradeWhenAIInvalidResponse() {
+        TriageAnalyzeRequest request = new TriageAnalyzeRequest(
+                1L, "头痛、发热三天", "三天", "无补充");
+
+        when(patientRepository.findById(1L)).thenReturn(Optional.of(testPatient));
+        when(aiTriageService.analyze(any(TriageAIRequest.class)))
+                .thenThrow(new BusinessException("AI_INVALID_RESPONSE", "AI 返回数据格式异常", 504));
+        when(triageRecordRepository.save(any(TriageRecord.class))).thenAnswer(invocation -> {
+            TriageRecord record = invocation.getArgument(0);
+            record.setId(1L);
+            return record;
+        });
+
+        TriageAnalyzeResponse response = triageService.analyze(request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.aiStatus()).isEqualTo("FAILED");
+        assertThat(response.mappingStatus()).isEqualTo("MANUAL");
+    }
+
+    @Test
+    @DisplayName("AI 紧急情况标记 - 返回 EMERGENCY 优先级和安全提示")
+    void analyze_shouldReturnEmergencyWhenSevere() {
+        TriageAnalyzeRequest request = new TriageAnalyzeRequest(
+                1L, "胸痛、呼吸困难", "1小时", "无补充");
+
+        TriageAIResult aiResult = new TriageAIResult(
+                "DEPT_EMERGENCY", "EMERGENCY",
+                List.of("胸痛", "呼吸困难"),
+                "症状疑似心血管急症",
+                "请立即前往急诊就诊",
+                true);
+
+        when(patientRepository.findById(1L)).thenReturn(Optional.of(testPatient));
+        when(aiTriageService.analyze(any(TriageAIRequest.class))).thenReturn(aiResult);
+        when(departmentRepository.findByCode("DEPT_EMERGENCY")).thenReturn(Optional.empty());
+        when(triageRecordRepository.save(any(TriageRecord.class))).thenAnswer(invocation -> {
+            TriageRecord record = invocation.getArgument(0);
+            record.setId(1L);
+            return record;
+        });
+
+        TriageAnalyzeResponse response = triageService.analyze(request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.aiPriority()).isEqualTo("EMERGENCY");
+        assertThat(response.aiEmergencySuggested()).isTrue();
+        assertThat(response.aiSafetyNotice()).isEqualTo("请立即前往急诊就诊");
+    }
+
+    @Test
     @DisplayName("AI 请求不包含患者隐私 ID（最小化原则）")
     void analyze_shouldNotIncludePatientPrivacyInAIRequest() {
         TriageAnalyzeRequest request = new TriageAnalyzeRequest(

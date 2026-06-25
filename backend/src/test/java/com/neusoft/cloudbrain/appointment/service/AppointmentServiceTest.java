@@ -350,4 +350,15 @@ class AppointmentServiceTest {
         assertThat(responses).hasSize(1);
         assertThat(responses.get(0).status()).isEqualTo("BOOKED");
     }
+
+    @Test
+    @DisplayName("获取挂号详情 - 不存在时抛出 BusinessException(404)")
+    void getAppointmentById_shouldThrowWhenNotFound() {
+        when(appointmentRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> appointmentService.getAppointmentById(99L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "APPOINTMENT_NOT_FOUND")
+                .hasFieldOrPropertyWithValue("httpStatus", 404);
+    }
 }

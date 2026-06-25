@@ -24,6 +24,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -405,6 +408,98 @@ class EncounterServiceTest {
         when(encounterRepository.findById(99L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> encounterService.getEncounterById(99L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "ENCOUNTER_NOT_FOUND")
+                .hasFieldOrPropertyWithValue("httpStatus", 404);
+    }
+
+    @Test
+    @DisplayName("按挂号 ID 查询就诊 - 存在时返回正确信息")
+    void getEncounterByAppointmentId_shouldReturnWhenExists() {
+        when(encounterRepository.findByAppointmentId(1L)).thenReturn(Optional.of(testEncounter));
+        when(patientRepository.findById(1L)).thenReturn(Optional.of(testPatient));
+        when(doctorRepository.findById(1L)).thenReturn(Optional.of(testDoctor));
+        when(departmentRepository.findById(1L)).thenReturn(Optional.of(testDepartment));
+
+        EncounterResponse response = encounterService.getEncounterByAppointmentId(1L);
+
+        assertThat(response).isNotNull();
+        assertThat(response.appointmentId()).isEqualTo(1L);
+        assertThat(response.patientName()).isEqualTo("测试患者");
+        assertThat(response.doctorName()).isEqualTo("张医生");
+    }
+
+    @Test
+    @DisplayName("按患者查询就诊列表 - 返回分页结果")
+    void getEncountersByPatient_shouldReturnPagedResult() {
+        Pageable pageable = PageRequest.of(0, 10);
+        when(encounterRepository.findByPatientId(eq(1L), eq(pageable)))
+                .thenReturn(new PageImpl<>(List.of(testEncounter), pageable, 1));
+        when(patientRepository.findById(1L)).thenReturn(Optional.of(testPatient));
+        when(departmentRepository.findById(1L)).thenReturn(Optional.of(testDepartment));
+
+        var responses = encounterService.getEncountersByPatient(1L, pageable);
+
+        assertThat(responses.getContent()).hasSize(1);
+        assertThat(responses.getTotalElements()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("按医生查询就诊列表 - 返回分页结果")
+    void getEncountersByDoctor_shouldReturnPagedResult() {
+        Pageable pageable = PageRequest.of(0, 10);
+        when(encounterRepository.findByDoctorId(eq(1L), eq(pageable)))
+                .thenReturn(new PageImpl<>(List.of(testEncounter), pageable, 1));
+        when(patientRepository.findById(1L)).thenReturn(Optional.of(testPatient));
+        when(departmentRepository.findById(1L)).thenReturn(Optional.of(testDepartment));
+
+        var responses = encounterService.getEncountersByDoctor(1L, pageable);
+
+        assertThat(responses.getContent()).hasSize(1);
+        assertThat(responses.getTotalElements()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("完成就诊 - 所有前置条件满足（含最终诊断）时成功完成")
+    void completeEncounter_shouldSucceedWithFinalDiagnosisAndPrescriptionConfirmed() {
+        testEncounter.setStatus("IN_PROGRESS");
+
+        when(encounterRepository.findById(1L)).thenReturn(Optional.of(testEncounter));
+        when(doctorRepository.findById(1L)).thenReturn(Optional.of(testDoctor));
+        when(encounterDiagnosisRepository.existsByEncounterIdAndTypeAndSource(1L, "FINAL", "DOCTOR"))
+                .thenReturn(true);
+        when(encounterRepository.save(any(Encounter.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(appointmentRepository.updateStatusIfCurrent(eq(1L), eq("IN_PROGRESS"), eq("COMPLETED"), any()))
+                .thenReturn(1);
+        when(patientRepository.findById(1L)).thenReturn(Optional.of(testPatient));
+        when(departmentRepository.findById(1L)).thenReturn(Optional.of(testDepartment));
+
+        EncounterResponse response = encounterService.completeEncounter(1L);
+
+        assertThat(response).isNotNull();
+        assertThat(response.status()).isEqualTo("COMPLETED");
+        assertThat(response.completedAt()).isNotNull();
+        verify(encounterRepository).save(any(Encounter.class));
+        verify(appointmentRepository).updateStatusIfCurrent(eq(1L), eq("IN_PROGRESS"), eq("COMPLETED"), any());
+    }
+
+    @Test
+    @DisplayName("完成就诊 - 就诊不存在时抛出 BusinessException(404)")
+    void completeEncounter_shouldThrowWhenEncounterNotFound() {
+        when(encounterRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> encounterService.completeEncounter(99L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "ENCOUNTER_NOT_FOUND")
+                .hasFieldOrPropertyWithValue("httpStatus", 404);
+    }
+
+    @Test
+    @DisplayName("按挂号 ID 查询就诊 - 不存在时抛出 BusinessException(404)")
+    void getEncounterByAppointmentId_shouldThrowWhenNotFound() {
+        when(encounterRepository.findByAppointmentId(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> encounterService.getEncounterByAppointmentId(99L))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("code", "ENCOUNTER_NOT_FOUND")
                 .hasFieldOrPropertyWithValue("httpStatus", 404);
