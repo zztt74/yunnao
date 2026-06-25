@@ -6,6 +6,7 @@ import com.neusoft.cloudbrain.appointment.dto.AppointmentResponse;
 import com.neusoft.cloudbrain.appointment.entity.Appointment;
 import com.neusoft.cloudbrain.appointment.exception.AppointmentErrorCode;
 import com.neusoft.cloudbrain.appointment.repository.AppointmentRepository;
+import com.neusoft.cloudbrain.audit.annotation.Auditable;
 import com.neusoft.cloudbrain.auth.dto.AuthPrincipal;
 import com.neusoft.cloudbrain.auth.security.SecurityUtils;
 import com.neusoft.cloudbrain.department.entity.Department;
@@ -66,6 +67,7 @@ public class AppointmentService {
      * 3. 创建挂号记录
      */
     @Transactional
+    @Auditable(action = "APPOINTMENT_CREATE", targetType = "APPOINTMENT")
     public AppointmentResponse createAppointment(AppointmentCreateRequest request) {
         // 1. 检查患者存在且活跃
         Patient patient = patientRepository.findById(request.patientId())
@@ -130,6 +132,7 @@ public class AppointmentService {
      * 3. 取消挂号并在事务内同步恢复号源
      */
     @Transactional
+    @Auditable(action = "APPOINTMENT_CANCEL", targetType = "APPOINTMENT")
     public AppointmentResponse cancelAppointment(Long id, AppointmentCancelRequest request) {
         Appointment appointment = appointmentRepository.findById(id)
                 .orElseThrow(AppointmentErrorCode.APPOINTMENT_NOT_FOUND::toException);
