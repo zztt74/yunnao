@@ -18,6 +18,8 @@ import com.neusoft.cloudbrain.encounter.entity.EncounterDiagnosis;
 import com.neusoft.cloudbrain.encounter.exception.EncounterErrorCode;
 import com.neusoft.cloudbrain.encounter.repository.EncounterDiagnosisRepository;
 import com.neusoft.cloudbrain.encounter.repository.EncounterRepository;
+import com.neusoft.cloudbrain.examination.service.ExaminationService;
+import com.neusoft.cloudbrain.medicalrecord.service.MedicalRecordService;
 import com.neusoft.cloudbrain.patient.entity.Patient;
 import com.neusoft.cloudbrain.patient.repository.PatientRepository;
 import lombok.RequiredArgsConstructor;
@@ -68,6 +70,8 @@ public class EncounterService {
     private final PatientRepository patientRepository;
     private final DoctorRepository doctorRepository;
     private final DepartmentRepository departmentRepository;
+    private final MedicalRecordService medicalRecordService;
+    private final ExaminationService examinationService;
 
     // ============================================================
     // 状态机：开始接诊 CREATED → IN_PROGRESS
@@ -397,13 +401,11 @@ public class EncounterService {
      * 1. 检查病历确认状态
      *
      * 完成就诊必须存在已确认正式病历。
-     * TODO: medicalrecord 模块实现后接入正式校验
      */
     private void validateMedicalRecordConfirmed(Encounter encounter) {
-        // medicalrecord 模块尚未实现
-        // 实现后应检查：存在 status=CONFIRMED 的 MedicalRecord 关联此 encounter
-        // 当前阶段：暂不校验，待 medicalrecord 模块完成后接入
-        log.debug("病历确认校验: encounterId={} (medicalrecord 模块待实现)", encounter.getId());
+        if (!medicalRecordService.hasConfirmedRecord(encounter.getId())) {
+            throw EncounterErrorCode.ENCOUNTER_MEDICAL_RECORD_NOT_CONFIRMED.toException();
+        }
     }
 
     /**
@@ -423,13 +425,11 @@ public class EncounterService {
      * 3. 检查所有检查检验已完成
      *
      * 任一检查检验处于 ORDERED、IN_PROGRESS 或 RESULT_ENTERED 时不得完成就诊。
-     * TODO: examination/laboratory 模块实现后接入正式校验
      */
     private void validateAllExamsReviewed(Encounter encounter) {
-        // examination/laboratory 模块尚未实现
-        // 实现后应检查：不存在 status IN (ORDERED, IN_PROGRESS, RESULT_ENTERED) 的检查检验
-        // 当前阶段：暂不校验，待 examination/laboratory 模块完成后接入
-        log.debug("检查检验校验: encounterId={} (examination/laboratory 模块待实现)", encounter.getId());
+        if (examinationService.hasPendingExaminations(encounter.getId())) {
+            throw EncounterErrorCode.ENCOUNTER_EXAMINATION_PENDING.toException();
+        }
     }
 
     /**
