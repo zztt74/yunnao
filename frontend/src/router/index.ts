@@ -9,6 +9,14 @@ import RegisterView from '@/views/RegisterView.vue'
 import ForbiddenView from '@/views/ForbiddenView.vue'
 import PatientHomeView from '@/views/patient/PatientHomeView.vue'
 import PatientProfileView from '@/views/patient/PatientProfileView.vue'
+import PatientTriageView from '@/views/patient/PatientTriageView.vue'
+import PatientAppointmentsView from '@/views/patient/PatientAppointmentsView.vue'
+import PatientMedicalRecordsView from '@/views/patient/PatientMedicalRecordsView.vue'
+import PatientExaminationsView from '@/views/patient/PatientExaminationsView.vue'
+import PatientPrescriptionsView from '@/views/patient/PatientPrescriptionsView.vue'
+import PatientTriageHistoryView from '@/views/patient/PatientTriageHistoryView.vue'
+import PatientTimelineView from '@/views/patient/PatientTimelineView.vue'
+import ChangePasswordView from '@/views/patient/ChangePasswordView.vue'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -51,6 +59,54 @@ const router = createRouter({
       name: 'patient-profile',
       component: PatientProfileView,
       meta: { requiresAuth: true, roles: ['PATIENT'], title: '个人信息' },
+    },
+    {
+      path: '/patient/triage',
+      name: 'patient-triage',
+      component: PatientTriageView,
+      meta: { requiresAuth: true, roles: ['PATIENT'], title: '智能分诊' },
+    },
+    {
+      path: '/patient/appointments',
+      name: 'patient-appointments',
+      component: PatientAppointmentsView,
+      meta: { requiresAuth: true, roles: ['PATIENT'], title: '在线挂号' },
+    },
+    {
+      path: '/patient/medical-records',
+      name: 'patient-medical-records',
+      component: PatientMedicalRecordsView,
+      meta: { requiresAuth: true, roles: ['PATIENT'], title: '我的病历' },
+    },
+    {
+      path: '/patient/examinations',
+      name: 'patient-examinations',
+      component: PatientExaminationsView,
+      meta: { requiresAuth: true, roles: ['PATIENT'], title: '检查检验' },
+    },
+    {
+      path: '/patient/prescriptions',
+      name: 'patient-prescriptions',
+      component: PatientPrescriptionsView,
+      meta: { requiresAuth: true, roles: ['PATIENT'], title: '我的处方' },
+    },
+    {
+      path: '/patient/triage-history',
+      name: 'patient-triage-history',
+      component: PatientTriageHistoryView,
+      meta: { requiresAuth: true, roles: ['PATIENT'], title: '分诊历史' },
+    },
+    {
+      path: '/patient/timeline',
+      name: 'patient-timeline',
+      component: PatientTimelineView,
+      meta: { requiresAuth: true, roles: ['PATIENT'], title: '诊疗时间线' },
+    },
+    {
+      path: '/patient/change-password',
+      name: 'patient-change-password',
+      component: ChangePasswordView,
+      meta: { requiresAuth: true, roles: ['PATIENT'], title: '修改密码' },
     },
     {
       path: '/doctor',
