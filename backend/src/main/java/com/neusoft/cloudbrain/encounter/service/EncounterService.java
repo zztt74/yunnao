@@ -2,6 +2,7 @@ package com.neusoft.cloudbrain.encounter.service;
 
 import com.neusoft.cloudbrain.appointment.entity.Appointment;
 import com.neusoft.cloudbrain.appointment.repository.AppointmentRepository;
+import com.neusoft.cloudbrain.audit.annotation.Auditable;
 import com.neusoft.cloudbrain.auth.dto.AuthPrincipal;
 import com.neusoft.cloudbrain.auth.security.SecurityUtils;
 import com.neusoft.cloudbrain.department.entity.Department;
@@ -89,6 +90,7 @@ public class EncounterService {
      * 4. 同步更新 Appointment 状态为 IN_PROGRESS
      */
     @Transactional
+    @Auditable(action = "ENCOUNTER_START", targetType = "ENCOUNTER")
     public EncounterResponse startEncounter(EncounterStartRequest request) {
         LocalDateTime now = LocalDateTime.now();
 
@@ -198,6 +200,7 @@ public class EncounterService {
      * 6. 同步更新挂号状态
      */
     @Transactional
+    @Auditable(action = "ENCOUNTER_COMPLETE", targetType = "ENCOUNTER")
     public EncounterResponse completeEncounter(Long encounterId) {
         Encounter encounter = findAndValidateEncounter(encounterId);
         validateEncounterStatus(encounter, "IN_PROGRESS");
@@ -240,6 +243,7 @@ public class EncounterService {
      * 仅 CREATED 状态可取消；IN_PROGRESS、WAITING_EXAM、COMPLETED 不允许取消。
      */
     @Transactional
+    @Auditable(action = "ENCOUNTER_CANCEL", targetType = "ENCOUNTER")
     public EncounterResponse cancelEncounter(Long encounterId, EncounterCancelRequest request) {
         Encounter encounter = findAndValidateEncounter(encounterId);
         validateEncounterStatus(encounter, "CREATED");
@@ -302,6 +306,7 @@ public class EncounterService {
      * - 医生确认的最终诊断不得被 AI 调用覆盖
      */
     @Transactional
+    @Auditable(action = "ENCOUNTER_DIAGNOSIS", targetType = "ENCOUNTER")
     public EncounterDiagnosisResponse addDoctorDiagnosis(Long encounterId, EncounterDiagnosisRequest request) {
         Encounter encounter = findAndValidateEncounter(encounterId);
         Doctor doctor = validateDoctorOwnership(encounter.getDoctorId());

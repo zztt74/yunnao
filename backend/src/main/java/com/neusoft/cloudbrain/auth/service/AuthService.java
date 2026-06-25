@@ -1,5 +1,6 @@
 package com.neusoft.cloudbrain.auth.service;
 
+import com.neusoft.cloudbrain.audit.annotation.Auditable;
 import com.neusoft.cloudbrain.auth.dto.AuthPrincipal;
 import com.neusoft.cloudbrain.auth.dto.ChangePasswordRequest;
 import com.neusoft.cloudbrain.auth.dto.LoginRequest;
@@ -49,6 +50,7 @@ public class AuthService {
      * 用户登录
      */
     @Transactional
+    @Auditable(action = "AUTH_LOGIN", targetType = "USER", targetIdParam = "")
     public LoginResponse login(LoginRequest request, String clientIp) {
         // 检查限流
         if (!loginRateLimiter.isAllowed(clientIp, request.username())) {
@@ -105,6 +107,7 @@ public class AuthService {
      * 修改密码
      */
     @Transactional
+    @Auditable(action = "AUTH_CHANGE_PASSWORD", targetType = "USER")
     public void changePassword(Long userId, ChangePasswordRequest request) {
         UserAccount user = userAccountRepository.findById(userId)
                 .orElseThrow(() -> new SecurityException("AUTH_INVALID_CREDENTIALS:用户不存在"));

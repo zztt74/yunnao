@@ -1,5 +1,6 @@
 package com.neusoft.cloudbrain.medicalrecord.service;
 
+import com.neusoft.cloudbrain.audit.annotation.Auditable;
 import com.neusoft.cloudbrain.ai.api.AIMedicalRecordService;
 import com.neusoft.cloudbrain.ai.dto.MedicalRecordAIRequest;
 import com.neusoft.cloudbrain.ai.dto.MedicalRecordAIResult;
@@ -214,6 +215,7 @@ public class MedicalRecordService {
      * - 基础版本每个 Encounter 只能有一条当前有效的 CONFIRMED 记录
      */
     @Transactional
+    @Auditable(action = "MEDICAL_RECORD_CONFIRM", targetType = "MEDICAL_RECORD")
     public MedicalRecordResponse confirmRecord(Long recordId) {
         MedicalRecord record = findAndValidateRecord(recordId);
 

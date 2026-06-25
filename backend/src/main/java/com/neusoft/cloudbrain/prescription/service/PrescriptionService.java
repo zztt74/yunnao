@@ -1,5 +1,6 @@
 package com.neusoft.cloudbrain.prescription.service;
 
+import com.neusoft.cloudbrain.audit.annotation.Auditable;
 import com.neusoft.cloudbrain.ai.api.AIPrescriptionReviewService;
 import com.neusoft.cloudbrain.ai.dto.PrescriptionReviewAIRequest;
 import com.neusoft.cloudbrain.ai.dto.PrescriptionReviewAIRequest.DeterministicRuleResult;
@@ -469,6 +470,7 @@ public class PrescriptionService {
      * - 高风险需要二次确认（前端展示风险提示，后端不阻止确认但记录）
      */
     @Transactional
+    @Auditable(action = "PRESCRIPTION_CONFIRM", targetType = "PRESCRIPTION")
     public PrescriptionResponse confirmPrescription(Long prescriptionId) {
         Prescription prescription = findAndValidatePrescription(prescriptionId);
         validatePrescriptionStatus(prescription, "DRAFT");
@@ -505,6 +507,7 @@ public class PrescriptionService {
      * - 已确认处方只能作废，不能物理删除
      */
     @Transactional
+    @Auditable(action = "PRESCRIPTION_VOID", targetType = "PRESCRIPTION")
     public PrescriptionResponse voidPrescription(Long prescriptionId, PrescriptionVoidRequest request) {
         Prescription prescription = findAndValidatePrescription(prescriptionId);
         validatePrescriptionStatus(prescription, "CONFIRMED");
