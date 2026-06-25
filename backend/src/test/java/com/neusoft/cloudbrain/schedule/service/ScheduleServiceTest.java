@@ -335,4 +335,102 @@ class ScheduleServiceTest {
         assertThat(responses.getContent()).hasSize(1);
         assertThat(responses.getTotalElements()).isEqualTo(1);
     }
+
+    @Test
+    @DisplayName("创建排班 - 科室已停用时抛出 BusinessException(409)")
+    void createSchedule_shouldThrowWhenDepartmentDisabled() {
+        testDepartment.setStatus("DISABLED");
+        ScheduleCreateRequest request = new ScheduleCreateRequest(
+                1L, 1L, LocalDate.now().plusDays(1),
+                LocalDateTime.now().plusDays(1).withHour(8).withMinute(0),
+                LocalDateTime.now().plusDays(1).withHour(12).withMinute(0),
+                10);
+
+        when(doctorRepository.findById(1L)).thenReturn(Optional.of(testDoctor));
+        when(departmentRepository.findById(1L)).thenReturn(Optional.of(testDepartment));
+
+        assertThatThrownBy(() -> scheduleService.createSchedule(request))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "DEPARTMENT_DISABLED")
+                .hasFieldOrPropertyWithValue("httpStatus", 409);
+    }
+
+    @Test
+    @DisplayName("更新排班 - 已取消的排班不能修改")
+    void updateSchedule_shouldRejectWhenAlreadyCancelled() {
+        testSchedule.setStatus("CANCELLED");
+        ScheduleUpdateRequest request = new ScheduleUpdateRequest(
+                testSchedule.getStartTime(),
+                testSchedule.getEndTime(),
+                10);
+
+        when(scheduleRepository.findById(1L)).thenReturn(Optional.of(testSchedule));
+
+        assertThatThrownBy(() -> scheduleService.updateSchedule(1L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "SCHEDULE_STATUS_CONFLICT")
+                .hasFieldOrPropertyWithValue("httpStatus", 409);
+    }
+
+    @Test
+    @DisplayName("更新排班 - 已完成的排班不能修改")
+    void updateSchedule_shouldRejectWhenAlreadyCompleted() {
+        testSchedule.setStatus("COMPLETED");
+        ScheduleUpdateRequest request = new ScheduleUpdateRequest(
+                testSchedule.getStartTime(),
+                testSchedule.getEndTime(),
+                10);
+
+        when(scheduleRepository.findById(1L)).thenReturn(Optional.of(testSchedule));
+
+        assertThatThrownBy(() -> scheduleService.updateSchedule(1L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "SCHEDULE_STATUS_CONFLICT")
+                .hasFieldOrPropertyWithValue("httpStatus", 409);
+    }
+
+    @Test
+    @DisplayName("查询可预约排班 - 返回可用排班列表")
+    void getAvailableSchedules_shouldReturnAvailableList() {
+        testSchedule.setEndTime(LocalDateTime.now().plusHours(2));
+        when(scheduleRepository.findByDepartmentIdAndScheduleDateAndStatusNot(any(), any(), any(), any()))
+                .thenReturn(new PageImpl<>(List.of(testSchedule)));
+        when(doctorRepository.findById(1L)).thenReturn(Optional.of(testDoctor));
+        when(departmentRepository.findById(1L)).thenReturn(Optional.of(testDepartment));
+
+        List<ScheduleResponse> responses = scheduleService.getAvailableSchedules(1L, LocalDateTime.now());
+
+        assertThat(responses).hasSize(1);
+        assertThat(responses.get(0).status()).isIn("AVAILABLE", "FULL");
+    }
+
+    @Test
+    @DisplayName("查询可预约排班 - 按科室过滤（无日期时）")
+    void getAvailableSchedules_shouldFilterByDepartmentOnly() {
+        testSchedule.setEndTime(LocalDateTime.now().plusHours(2));
+        when(scheduleRepository.findByDepartmentId(1L))
+                .thenReturn(List.of(testSchedule));
+        when(doctorRepository.findById(1L)).thenReturn(Optional.of(testDoctor));
+        when(departmentRepository.findById(1L)).thenReturn(Optional.of(testDepartment));
+
+        List<ScheduleResponse> responses = scheduleService.getAvailableSchedules(1L, null);
+
+        assertThat(responses).hasSize(1);
+        verify(scheduleRepository).findByDepartmentId(1L);
+    }
+
+    @Test
+    @DisplayName("查询可预约排班 - 无参数时返回所有可用排班")
+    void getAvailableSchedules_shouldReturnAllWhenNoParams() {
+        testSchedule.setEndTime(LocalDateTime.now().plusHours(2));
+        when(scheduleRepository.findAll())
+                .thenReturn(List.of(testSchedule));
+        when(doctorRepository.findById(1L)).thenReturn(Optional.of(testDoctor));
+        when(departmentRepository.findById(1L)).thenReturn(Optional.of(testDepartment));
+
+        List<ScheduleResponse> responses = scheduleService.getAvailableSchedules(null, null);
+
+        assertThat(responses).hasSize(1);
+        verify(scheduleRepository).findAll();
+    }
 }

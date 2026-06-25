@@ -3,20 +3,31 @@ info:
   title: 智慧云脑诊疗平台 API
   version: 0.1.0
   description: |
-    阶段一：用户认证与权限管理
+    阶段二：基础数据管理（认证 + 科室 + 患者 + 医生 + 药品）
+    阶段三：排班与挂号（Phase 5-6）
+    阶段四：分诊与就诊（Phase 7-8）
 
     当前包含接口：
-    - POST /api/auth/login — 用户登录
-    - POST /api/auth/logout — 退出登录
-    - POST /api/auth/change-password — 修改密码
+    - 认证模块：login / logout / change-password（3 个）
+    - 科室模块：tree / list / create / update（4 个）
+    - 患者模块：register / me / detail / update / profile / search（6 个）
+    - 医生模块：list / create / update / by-department（4 个）
+    - 药品模块：list / detail / by-code / by-category / interaction / contraindications（7 个）
+    - 排班模块：create / update / cancel / detail / by-doctor / by-department / available（7 个）
+    - 挂号模块：create / cancel / detail / by-patient / by-doctor / pending / all（7 个）
+    - 分诊模块：analyze / detail / by-patient（3 个）
+    - 就诊模块：start / wait-exam / resume / complete / cancel / diagnoses / detail（12 个）
 
-    契约来源：contracts/30_接口数据与错误契约.md 第11节
+    契约来源：contracts/30_接口数据与错误契约.md 第11节 + 第12节
 servers:
   - url: http://localhost:8080
     description: 本地后端
   - url: http://localhost:4010
     description: Prism API Mock Server
 paths:
+  # ============================================================
+  # 认证接口（阶段一）
+  # ============================================================
   /api/auth/login:
     post:
       tags:
@@ -75,7 +86,7 @@ paths:
                       username: admin
                       roles:
                         - ADMIN
-                      mustChangePassword: true
+                      mustChangePassword: false
                       expiresIn: 7200
                     traceId: "abc-123-def"
                 强制改密提示:
@@ -301,6 +312,12 @@ paths:
                         type: array
                         items:
                           $ref: './schemas/base_data.yaml#/DepartmentResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
 
   /api/departments:
     get:
@@ -324,6 +341,12 @@ paths:
                         type: array
                         items:
                           $ref: './schemas/base_data.yaml#/DepartmentResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
     post:
       tags:
         - 科室
@@ -350,6 +373,12 @@ paths:
                     properties:
                       data:
                         $ref: './schemas/base_data.yaml#/DepartmentResponse'
+        '409':
+          description: 科室编码重复或父科室不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
 
   /api/departments/{id}:
     get:
@@ -378,6 +407,12 @@ paths:
                     properties:
                       data:
                         $ref: './schemas/base_data.yaml#/DepartmentResponse'
+        '404':
+          description: 科室不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
     put:
       tags:
         - 科室
@@ -411,6 +446,12 @@ paths:
                     properties:
                       data:
                         $ref: './schemas/base_data.yaml#/DepartmentResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
 
   # ============================================================
   # 患者接口
@@ -441,6 +482,12 @@ paths:
                     properties:
                       data:
                         $ref: './schemas/base_data.yaml#/PatientResponse'
+        '409':
+          description: 用户名或手机号已被使用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
 
   /api/patients/me:
     get:
@@ -462,6 +509,12 @@ paths:
                     properties:
                       data:
                         $ref: './schemas/base_data.yaml#/PatientResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
 
   /api/patients/{id}:
     get:
@@ -491,6 +544,18 @@ paths:
                     properties:
                       data:
                         $ref: './schemas/base_data.yaml#/PatientResponse'
+        '403':
+          description: 无权限访问其他患者数据
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '404':
+          description: 患者不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
     put:
       tags:
         - 患者
@@ -524,6 +589,12 @@ paths:
                     properties:
                       data:
                         $ref: './schemas/base_data.yaml#/PatientResponse'
+        '403':
+          description: 无权限修改其他患者数据
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
 
   /api/patients/{id}/profile:
     get:
@@ -552,6 +623,12 @@ paths:
                     properties:
                       data:
                         $ref: './schemas/base_data.yaml#/PatientProfileResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
     put:
       tags:
         - 患者
@@ -584,6 +661,12 @@ paths:
                     properties:
                       data:
                         $ref: './schemas/base_data.yaml#/PatientProfileResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
 
   /api/patients/search:
     get:
@@ -617,6 +700,12 @@ paths:
                         type: array
                         items:
                           $ref: './schemas/base_data.yaml#/PatientResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
 
   # ============================================================
   # 医生接口
@@ -656,6 +745,12 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/PageResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
     post:
       tags:
         - 医生
@@ -682,6 +777,12 @@ paths:
                     properties:
                       data:
                         $ref: './schemas/base_data.yaml#/DoctorResponse'
+        '409':
+          description: 父科室停用或用户名已存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
 
   /api/doctors/{id}:
     get:
@@ -710,6 +811,12 @@ paths:
                     properties:
                       data:
                         $ref: './schemas/base_data.yaml#/DoctorResponse'
+        '404':
+          description: 医生不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
     put:
       tags:
         - 医生
@@ -742,6 +849,12 @@ paths:
                     properties:
                       data:
                         $ref: './schemas/base_data.yaml#/DoctorResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
 
   /api/doctors/by-department/{deptId}:
     get:
@@ -772,6 +885,12 @@ paths:
                         type: array
                         items:
                           $ref: './schemas/base_data.yaml#/DoctorResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
 
   # ============================================================
   # 药品接口
@@ -811,6 +930,12 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/PageResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
 
   /api/drugs/{id}:
     get:
@@ -840,6 +965,12 @@ paths:
                     properties:
                       data:
                         $ref: './schemas/base_data.yaml#/DrugResponse'
+        '404':
+          description: 药品不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
 
   /api/drugs/by-code/{code}:
     get:
@@ -867,6 +998,12 @@ paths:
                     properties:
                       data:
                         $ref: './schemas/base_data.yaml#/DrugResponse'
+        '404':
+          description: 药品不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
 
   /api/drugs/by-category:
     get:
@@ -897,6 +1034,12 @@ paths:
                         type: array
                         items:
                           $ref: './schemas/base_data.yaml#/DrugResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
 
   /api/drugs/interaction:
     get:
@@ -933,8 +1076,14 @@ paths:
                         type: array
                         items:
                           $ref: './schemas/base_data.yaml#/DrugInteractionResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
 
-  /api/drugs/contraindications/{code}:
+  /api/drugs/contraindications/{drugCode}:
     get:
       tags:
         - 药品
@@ -943,7 +1092,7 @@ paths:
       security:
         - bearerAuth: []
       parameters:
-        - name: code
+        - name: drugCode
           in: path
           required: true
           schema:
@@ -974,8 +1123,15 @@ paths:
                               type: string
                             description:
                               type: string
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
   # ============================================================
-  # 排班接口
+  # 排班接口（阶段三）
   # ============================================================
   /api/schedules:
     post:
@@ -1003,12 +1159,13 @@ paths:
                     properties:
                       data:
                         $ref: './schemas/schedule_appointment.yaml#/ScheduleResponse'
-        '400':
-          description: 参数校验失败或业务冲突
+        '409':
+          description: 排班时间冲突或医生/科室已停用
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiResponse'
+
   /api/schedules/{id}:
     get:
       tags:
@@ -1036,10 +1193,17 @@ paths:
                     properties:
                       data:
                         $ref: './schemas/schedule_appointment.yaml#/ScheduleResponse'
+        '404':
+          description: 排班不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
     put:
       tags:
         - 排班
       summary: 修改排班（管理员）
+      description: 仅允许修改未开始的排班；已预约数不能超过新的最大号源
       operationId: updateSchedule
       security:
         - bearerAuth: []
@@ -1058,7 +1222,7 @@ paths:
               $ref: './schemas/schedule_appointment.yaml#/ScheduleUpdateRequest'
       responses:
         '200':
-          description: 修改成功
+          description: 更新成功
           content:
             application/json:
               schema:
@@ -1068,13 +1232,20 @@ paths:
                     properties:
                       data:
                         $ref: './schemas/schedule_appointment.yaml#/ScheduleResponse'
+        '409':
+          description: 容量冲突或排班已结束
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
   /api/schedules/{id}/cancel:
     post:
       tags:
         - 排班
       summary: 取消排班（管理员）
       description: |
-        取消排班与取消其 BOOKED、CHECKED_IN 挂号在同一事务完成。
+        取消排班并同步取消该排班下所有 BOOKED/CHECKED_IN 的挂号。
         存在 IN_PROGRESS、WAITING_EXAM 或 COMPLETED 挂号时禁止取消。
       operationId: cancelSchedule
       security:
@@ -1104,11 +1275,18 @@ paths:
                     properties:
                       data:
                         $ref: './schemas/schedule_appointment.yaml#/ScheduleResponse'
-  /api/schedules/doctor-list/{doctorId}:
+        '409':
+          description: 存在进行中或已完成挂号，不能取消
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/schedules/doctor/{doctorId}:
     get:
       tags:
         - 排班
-      summary: 按医生查询排班
+      summary: 按医生查询排班（分页）
       operationId: getSchedulesByDoctor
       security:
         - bearerAuth: []
@@ -1119,6 +1297,16 @@ paths:
           schema:
             type: integer
             format: int64
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
       responses:
         '200':
           description: 排班列表
@@ -1130,10 +1318,15 @@ paths:
                   - type: object
                     properties:
                       data:
-                        type: array
-                        items:
-                          $ref: './schemas/schedule_appointment.yaml#/ScheduleResponse'
-  /api/schedules/dept-list/{departmentId}:
+                        $ref: '#/components/schemas/PageResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/schedules/department/{departmentId}:
     get:
       tags:
         - 排班
@@ -1162,6 +1355,13 @@ paths:
                         type: array
                         items:
                           $ref: './schemas/schedule_appointment.yaml#/ScheduleResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
   /api/schedules/available:
     get:
       tags:
@@ -1195,8 +1395,15 @@ paths:
                         type: array
                         items:
                           $ref: './schemas/schedule_appointment.yaml#/ScheduleResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
   # ============================================================
-  # 挂号接口
+  # 挂号接口（阶段三）
   # ============================================================
   /api/appointments:
     post:
@@ -1204,11 +1411,8 @@ paths:
         - 挂号
       summary: 创建挂号
       description: |
-        并发控制：使用数据库条件更新防止超卖。
-        事务保证：号源扣减与挂号记录创建在同一事务。
-        约束：
-        - 同一患者同一排班不能重复挂号
-        - 过期或取消排班不能继续挂号
+        患者选择排班进行挂号。扣减号源使用数据库条件更新防止超卖。
+        同一个患者不能在同一排班下创建重复挂号。
       operationId: createAppointment
       security:
         - bearerAuth: []
@@ -1230,8 +1434,8 @@ paths:
                     properties:
                       data:
                         $ref: './schemas/schedule_appointment.yaml#/AppointmentResponse'
-        '400':
-          description: 参数校验失败或业务冲突（号源已满、重复挂号等）
+        '409':
+          description: 号源已满、重复挂号或排班不可用
           content:
             application/json:
               schema:
@@ -1239,13 +1443,13 @@ paths:
     get:
       tags:
         - 挂号
-      summary: 查询全部挂号（管理员）
+      summary: 管理员查看全部挂号
       operationId: getAllAppointments
       security:
         - bearerAuth: []
       responses:
         '200':
-          description: 挂号列表
+          description: 全部挂号列表
           content:
             application/json:
               schema:
@@ -1257,6 +1461,13 @@ paths:
                         type: array
                         items:
                           $ref: './schemas/schedule_appointment.yaml#/AppointmentResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
   /api/appointments/{id}:
     get:
       tags:
@@ -1284,14 +1495,21 @@ paths:
                     properties:
                       data:
                         $ref: './schemas/schedule_appointment.yaml#/AppointmentResponse'
+        '404':
+          description: 挂号不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
   /api/appointments/{id}/cancel:
     post:
       tags:
         - 挂号
       summary: 取消挂号
       description: |
-        事务保证：取消挂号与恢复号源在同一事务。
-        约束：接诊开始后（IN_PROGRESS、WAITING_EXAM）不得取消。
+        患者或管理员取消挂号，恢复号源。
+        接诊开始后（IN_PROGRESS、WAITING_EXAM、COMPLETED）不能取消。
       operationId: cancelAppointment
       security:
         - bearerAuth: []
@@ -1320,11 +1538,18 @@ paths:
                     properties:
                       data:
                         $ref: './schemas/schedule_appointment.yaml#/AppointmentResponse'
-  /api/appointments/patient-list/{patientId}:
+        '409':
+          description: 接诊已开始或已完成，不能取消
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/appointments/patient/{patientId}:
     get:
       tags:
         - 挂号
-      summary: 查询患者挂号列表
+      summary: 查询患者挂号列表（分页）
       operationId: getAppointmentsByPatient
       security:
         - bearerAuth: []
@@ -1335,9 +1560,19 @@ paths:
           schema:
             type: integer
             format: int64
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
       responses:
         '200':
-          description: 患者挂号列表
+          description: 挂号列表
           content:
             application/json:
               schema:
@@ -1346,14 +1581,19 @@ paths:
                   - type: object
                     properties:
                       data:
-                        type: array
-                        items:
-                          $ref: './schemas/schedule_appointment.yaml#/AppointmentResponse'
-  /api/appointments/doctor-list/{doctorId}:
+                        $ref: '#/components/schemas/PageResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/appointments/doctor/{doctorId}:
     get:
       tags:
         - 挂号
-      summary: 查询医生挂号列表
+      summary: 查询医生挂号列表（分页）
       operationId: getAppointmentsByDoctor
       security:
         - bearerAuth: []
@@ -1364,9 +1604,19 @@ paths:
           schema:
             type: integer
             format: int64
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
       responses:
         '200':
-          description: 医生挂号列表
+          description: 挂号列表
           content:
             application/json:
               schema:
@@ -1375,14 +1625,20 @@ paths:
                   - type: object
                     properties:
                       data:
-                        type: array
-                        items:
-                          $ref: './schemas/schedule_appointment.yaml#/AppointmentResponse'
+                        $ref: '#/components/schemas/PageResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
   /api/appointments/doctor/{doctorId}/pending:
     get:
       tags:
         - 挂号
       summary: 查询医生待诊队列
+      description: 返回指定医生下状态为 BOOKED 的挂号列表
       operationId: getDoctorPendingAppointments
       security:
         - bearerAuth: []
@@ -1407,6 +1663,601 @@ paths:
                         type: array
                         items:
                           $ref: './schemas/schedule_appointment.yaml#/AppointmentResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  # ============================================================
+  # 分诊接口（阶段四）
+  # ============================================================
+  /api/triage/analyze:
+    post:
+      tags:
+        - 分诊
+      summary: AI 分诊分析
+      description: |
+        患者输入症状，返回 AI 分诊建议、科室映射和推荐可预约排班。
+        AI 失败时返回降级标记，提示转人工选择科室。
+      operationId: analyzeTriage
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/triage_encounter.yaml#/TriageAnalyzeRequest'
+      responses:
+        '200':
+          description: 分诊分析结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: './schemas/triage_encounter.yaml#/TriageAnalyzeResponse'
+        '403':
+          description: 患者不活跃或无权限
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '404':
+          description: 患者不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/triage/{id}:
+    get:
+      tags:
+        - 分诊
+      summary: 获取分诊记录详情
+      operationId: getTriageRecordById
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 分诊记录详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: './schemas/triage_encounter.yaml#/TriageRecordResponse'
+        '404':
+          description: 分诊记录不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/triage/patient/{patientId}:
+    get:
+      tags:
+        - 分诊
+      summary: 查询患者分诊记录列表（分页）
+      operationId: getTriageRecordsByPatient
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: patientId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: 分诊记录列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PageResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  # ============================================================
+  # 就诊接口（阶段四）
+  # ============================================================
+  /api/encounters/start:
+    post:
+      tags:
+        - 就诊
+      summary: 开始接诊（CREATED → IN_PROGRESS）
+      description: |
+        医生开始接诊患者。创建 Encounter 并同步 Appointment 状态为 IN_PROGRESS。
+        一个 Appointment 只能关联一个有效 Encounter。
+      operationId: startEncounter
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/triage_encounter.yaml#/EncounterStartRequest'
+      responses:
+        '200':
+          description: 开始接诊成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: './schemas/triage_encounter.yaml#/EncounterResponse'
+        '409':
+          description: 重复就诊或挂号状态无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/encounters/{id}/wait-exam:
+    post:
+      tags:
+        - 就诊
+      summary: 等待检查（IN_PROGRESS → WAITING_EXAM）
+      operationId: waitForExam
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 状态更新成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: './schemas/triage_encounter.yaml#/EncounterResponse'
+        '409':
+          description: 状态冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/encounters/{id}/resume:
+    post:
+      tags:
+        - 就诊
+      summary: 继续诊疗（WAITING_EXAM → IN_PROGRESS）
+      operationId: resumeEncounter
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 继续诊疗成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: './schemas/triage_encounter.yaml#/EncounterResponse'
+        '409':
+          description: 状态冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/encounters/{id}/complete:
+    post:
+      tags:
+        - 就诊
+      summary: 完成就诊（IN_PROGRESS → COMPLETED）
+      description: |
+        完成就诊前置条件检查：
+        - 病历已确认
+        - 存在医生最终诊断
+        - 所有检查检验已完成/已审核
+        - 处方状态为 CONFIRMED 或 VOIDED（如有）
+      operationId: completeEncounter
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 完成就诊成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: './schemas/triage_encounter.yaml#/EncounterResponse'
+        '409':
+          description: 前置条件不满足（缺少诊断/病历未确认/检查未完成/处方状态异常）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/encounters/{id}/cancel:
+    post:
+      tags:
+        - 就诊
+      summary: 取消就诊（CREATED → CANCELLED）
+      description: 仅 CREATED 状态可取消。IN_PROGRESS、WAITING_EXAM、COMPLETED 不允许取消。
+      operationId: cancelEncounter
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/triage_encounter.yaml#/EncounterCancelRequest'
+      responses:
+        '200':
+          description: 取消成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: './schemas/triage_encounter.yaml#/EncounterResponse'
+        '409':
+          description: 状态不允许取消
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/encounters/{id}:
+    get:
+      tags:
+        - 就诊
+      summary: 获取就诊详情
+      operationId: getEncounterById
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 就诊详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: './schemas/triage_encounter.yaml#/EncounterResponse'
+        '404':
+          description: 就诊不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/encounters/appointment/{appointmentId}:
+    get:
+      tags:
+        - 就诊
+      summary: 按挂号 ID 查询就诊
+      operationId: getEncounterByAppointmentId
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: appointmentId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 就诊信息
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: './schemas/triage_encounter.yaml#/EncounterResponse'
+        '404':
+          description: 就诊不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/encounters/doctor/{doctorId}:
+    get:
+      tags:
+        - 就诊
+      summary: 查询医生就诊列表（分页）
+      operationId: getEncountersByDoctor
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: doctorId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: 就诊列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PageResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/encounters/patient/{patientId}:
+    get:
+      tags:
+        - 就诊
+      summary: 查询患者就诊列表（分页）
+      operationId: getEncountersByPatient
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: patientId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: 就诊列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PageResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/encounters/{id}/diagnoses/ai:
+    post:
+      tags:
+        - 就诊
+      summary: 添加 AI 候选诊断
+      description: |
+        诊断隔离原则：AI 只能创建 type=PRELIMINARY、source=AI_SUGGESTION 的诊断。
+        AI 不得创建 FINAL+DOCTOR 记录。
+      operationId: addAIDiagnosis
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/triage_encounter.yaml#/EncounterDiagnosisRequest'
+      responses:
+        '200':
+          description: AI 诊断添加成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: './schemas/triage_encounter.yaml#/EncounterDiagnosisResponse'
+        '409':
+          description: 诊断隔离违规
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/encounters/{id}/diagnoses/doctor:
+    post:
+      tags:
+        - 就诊
+      summary: 添加医生最终诊断
+      description: |
+        诊断隔离原则：医生诊断必须为 type=FINAL、source=DOCTOR。
+        医生不得创建非 FINAL 的诊断（类型冲突）。
+      operationId: addDoctorDiagnosis
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/triage_encounter.yaml#/EncounterDiagnosisRequest'
+      responses:
+        '200':
+          description: 医生诊断添加成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: './schemas/triage_encounter.yaml#/EncounterDiagnosisResponse'
+        '409':
+          description: 诊断类型冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/encounters/{id}/diagnoses:
+    get:
+      tags:
+        - 就诊
+      summary: 查询就诊诊断列表
+      operationId: getEncounterDiagnoses
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 诊断列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: './schemas/triage_encounter.yaml#/EncounterDiagnosisResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
 
 components:
   securitySchemes:

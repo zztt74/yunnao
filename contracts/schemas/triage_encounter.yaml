@@ -1,0 +1,291 @@
+# 分诊与就诊模块 Schema
+#
+# 对应阶段4：分诊与就诊（Phase 7-8）
+# 契约来源：contracts/30_接口数据与错误契约.md、product/12_业务流程与状态机.md
+
+# ============================================================
+# 分诊 (Triage)
+# ============================================================
+TriageAnalyzeRequest:
+  type: object
+  required:
+    - patientId
+    - symptoms
+  properties:
+    patientId:
+      type: integer
+      format: int64
+      description: 患者 ID
+    symptoms:
+      type: string
+      minLength: 2
+      maxLength: 2000
+      description: 主诉症状
+    duration:
+      type: string
+      maxLength: 32
+      description: 症状持续时间
+    supplement:
+      type: string
+      maxLength: 2000
+      description: 补充信息
+
+TriageAnalyzeResponse:
+  type: object
+  properties:
+    triageRecordId:
+      type: integer
+      format: int64
+    patientId:
+      type: integer
+      format: int64
+    symptoms:
+      type: string
+    duration:
+      type: [string, 'null']
+    supplement:
+      type: [string, 'null']
+    # AI 结果
+    aiDepartmentCode:
+      type: [string, 'null']
+    aiPriority:
+      type: [string, 'null']
+      enum: [LOW, MEDIUM, HIGH, EMERGENCY]
+    aiReason:
+      type: [string, 'null']
+    aiSafetyNotice:
+      type: [string, 'null']
+    aiEmergencySuggested:
+      type: boolean
+    aiSymptomKeywords:
+      type: [array, 'null']
+      items:
+        type: string
+    aiStatus:
+      type: string
+      enum: [PENDING, SUCCESS, FAILED]
+    aiFailureReason:
+      type: [string, 'null']
+    # 映射结果
+    mappedDepartmentId:
+      type: [integer, 'null']
+      format: int64
+    mappedDepartmentName:
+      type: [string, 'null']
+    mappingStatus:
+      type: string
+      enum: [PENDING, MAPPED, MANUAL]
+    # 推荐排班
+    recommendedSchedules:
+      type: array
+      items:
+        $ref: '#/RecommendedSchedule'
+    createdAt:
+      type: string
+      format: date-time
+
+RecommendedSchedule:
+  type: object
+  properties:
+    scheduleId:
+      type: integer
+      format: int64
+    doctorId:
+      type: integer
+      format: int64
+    doctorName:
+      type: string
+    doctorTitle:
+      type: string
+    departmentId:
+      type: integer
+      format: int64
+    departmentName:
+      type: string
+    scheduleDate:
+      type: string
+      format: date
+    startTime:
+      type: string
+      format: date-time
+    endTime:
+      type: string
+      format: date-time
+    remainingCount:
+      type: integer
+
+TriageRecordResponse:
+  type: object
+  properties:
+    id:
+      type: integer
+      format: int64
+    patientId:
+      type: integer
+      format: int64
+    symptoms:
+      type: string
+    duration:
+      type: [string, 'null']
+    supplement:
+      type: [string, 'null']
+    aiDepartmentCode:
+      type: [string, 'null']
+    aiPriority:
+      type: [string, 'null']
+    aiReason:
+      type: [string, 'null']
+    aiSafetyNotice:
+      type: [string, 'null']
+    aiEmergencySuggested:
+      type: boolean
+    aiSymptomKeywords:
+      type: [string, 'null']
+    mappedDepartmentId:
+      type: [integer, 'null']
+      format: int64
+    mappingStatus:
+      type: string
+    aiStatus:
+      type: string
+    aiFailureReason:
+      type: [string, 'null']
+    createdAt:
+      type: string
+      format: date-time
+    updatedAt:
+      type: string
+      format: date-time
+
+# ============================================================
+# 就诊 (Encounter)
+# ============================================================
+EncounterStartRequest:
+  type: object
+  required:
+    - appointmentId
+  properties:
+    appointmentId:
+      type: integer
+      format: int64
+      description: 挂号 ID
+
+EncounterCancelRequest:
+  type: object
+  properties:
+    reason:
+      type: string
+      maxLength: 255
+      description: 取消原因
+
+EncounterDiagnosisRequest:
+  type: object
+  required:
+    - diagnosisCode
+    - diagnosisName
+    - type
+    - source
+  properties:
+    diagnosisCode:
+      type: string
+      maxLength: 32
+      description: 诊断编码
+    diagnosisName:
+      type: string
+      maxLength: 128
+      description: 诊断名称
+    type:
+      type: string
+      enum: [PRELIMINARY, FINAL]
+      description: 诊断类型（PRELIMINARY-初步，FINAL-最终）
+    source:
+      type: string
+      enum: [DOCTOR, AI_SUGGESTION]
+      description: 诊断来源（DOCTOR-医生，AI_SUGGESTION-AI建议）
+    notes:
+      type: string
+      maxLength: 2000
+      description: 备注
+
+EncounterDiagnosisResponse:
+  type: object
+  properties:
+    id:
+      type: integer
+      format: int64
+    encounterId:
+      type: integer
+      format: int64
+    diagnosisCode:
+      type: string
+    diagnosisName:
+      type: string
+    type:
+      type: string
+    source:
+      type: string
+    aiInvocationId:
+      type: [integer, 'null']
+      format: int64
+    doctorId:
+      type: [integer, 'null']
+      format: int64
+    confirmedAt:
+      type: [string, 'null']
+      format: date-time
+    notes:
+      type: [string, 'null']
+    createdAt:
+      type: string
+      format: date-time
+    updatedAt:
+      type: string
+      format: date-time
+
+EncounterResponse:
+  type: object
+  properties:
+    id:
+      type: integer
+      format: int64
+    appointmentId:
+      type: integer
+      format: int64
+    patientId:
+      type: integer
+      format: int64
+    patientName:
+      type: string
+    doctorId:
+      type: integer
+      format: int64
+    doctorName:
+      type: string
+    departmentId:
+      type: integer
+      format: int64
+    departmentName:
+      type: string
+    status:
+      type: string
+      enum: [CREATED, IN_PROGRESS, WAITING_EXAM, COMPLETED, CANCELLED]
+    startedAt:
+      type: [string, 'null']
+      format: date-time
+    waitingExamAt:
+      type: [string, 'null']
+      format: date-time
+    completedAt:
+      type: [string, 'null']
+      format: date-time
+    cancelledAt:
+      type: [string, 'null']
+      format: date-time
+    cancelReason:
+      type: [string, 'null']
+    createdAt:
+      type: string
+      format: date-time
+    updatedAt:
+      type: string
+      format: date-time
