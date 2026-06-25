@@ -20,6 +20,26 @@ spring:
 server:
   port: ${SERVER_PORT:8080}
 
+# 日志配置（来自 30_接口数据与错误契约.md 第3节、阶段8 公共基础设施）
+# - 控制台输出不带 traceId（保持简洁）
+# - 文件输出带 [%X{traceId}]，由 TraceIdFilter 写入 MDC
+# - 禁止记录 Spring Security 的敏感调试信息
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{traceId}] %logger{36} - %msg%n"
+  level:
+    root: INFO
+    com.neusoft.cloudbrain: DEBUG
+    org.springframework.security: WARN
+  file:
+    name: ${LOG_FILE:logs/cloud-brain.log}
+  logback:
+    rollingpolicy:
+      max-file-size: 10MB
+      max-history: 30
+      total-size-cap: 1GB
+
 management:
   endpoints:
     web:

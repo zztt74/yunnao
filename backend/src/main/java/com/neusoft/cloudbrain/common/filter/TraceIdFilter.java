@@ -4,6 +4,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.MDC;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -22,6 +23,7 @@ import java.util.regex.Pattern;
  * - 只接受 1 至 64 位字母、数字、短横线或下划线
  * - 缺失或非法时生成新值
  * - 同时写入响应头 X-Trace-Id 和统一响应体
+ * - 写入 MDC，使日志 pattern 中的 %X{traceId} 可输出链路 ID
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -29,6 +31,7 @@ public class TraceIdFilter extends OncePerRequestFilter {
 
     private static final String TRACE_ID_HEADER = "X-Trace-Id";
     private static final String TRACE_ID_ATTR = "traceId";
+    private static final String MDC_TRACE_ID = "traceId";
     private static final Pattern TRACE_ID_PATTERN = Pattern.compile("^[a-zA-Z0-9_-]{1,64}$");
 
     @Override
@@ -50,6 +53,12 @@ public class TraceIdFilter extends OncePerRequestFilter {
         // 写入响应头
         response.setHeader(TRACE_ID_HEADER, traceId);
 
-        filterChain.doFilter(request, response);
+        // 写入 MDC，供日志 pattern 使用 %X{traceId}
+        MDC.put(MDC_TRACE_ID, traceId);
+        try {
+            filterChain.doFilter(request, response);
+        } finally {
+            MDC.remove(MDC_TRACE_ID);
+        }
     }
 }
