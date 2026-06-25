@@ -15,6 +15,8 @@ import com.neusoft.cloudbrain.encounter.entity.Encounter;
 import com.neusoft.cloudbrain.encounter.entity.EncounterDiagnosis;
 import com.neusoft.cloudbrain.encounter.repository.EncounterDiagnosisRepository;
 import com.neusoft.cloudbrain.encounter.repository.EncounterRepository;
+import com.neusoft.cloudbrain.examination.service.ExaminationService;
+import com.neusoft.cloudbrain.medicalrecord.service.MedicalRecordService;
 import com.neusoft.cloudbrain.patient.entity.Patient;
 import com.neusoft.cloudbrain.patient.repository.PatientRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -71,6 +73,12 @@ class EncounterServiceTest {
 
     @Mock
     private DepartmentRepository departmentRepository;
+
+    @Mock
+    private MedicalRecordService medicalRecordService;
+
+    @Mock
+    private ExaminationService examinationService;
 
     @InjectMocks
     private EncounterService encounterService;
@@ -198,6 +206,10 @@ class EncounterServiceTest {
         // 医生最终诊断存在
         when(encounterDiagnosisRepository.existsByEncounterIdAndTypeAndSource(1L, "FINAL", "DOCTOR"))
                 .thenReturn(true);
+        // 病历已确认
+        when(medicalRecordService.hasConfirmedRecord(1L)).thenReturn(true);
+        // 检查检验全部完成
+        when(examinationService.hasPendingExaminations(1L)).thenReturn(false);
         when(encounterRepository.save(any(Encounter.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(appointmentRepository.updateStatusIfCurrent(eq(1L), eq("IN_PROGRESS"), eq("COMPLETED"), any()))
                 .thenReturn(1);
@@ -219,6 +231,8 @@ class EncounterServiceTest {
     void completeEncounter_shouldThrowWhenFinalDiagnosisMissing() {
         when(encounterRepository.findById(1L)).thenReturn(Optional.of(testEncounter));
         when(doctorRepository.findById(1L)).thenReturn(Optional.of(testDoctor));
+        // 病历已确认（前置条件通过）
+        when(medicalRecordService.hasConfirmedRecord(1L)).thenReturn(true);
         // 无医生最终诊断
         when(encounterDiagnosisRepository.existsByEncounterIdAndTypeAndSource(1L, "FINAL", "DOCTOR"))
                 .thenReturn(false);
@@ -466,6 +480,10 @@ class EncounterServiceTest {
 
         when(encounterRepository.findById(1L)).thenReturn(Optional.of(testEncounter));
         when(doctorRepository.findById(1L)).thenReturn(Optional.of(testDoctor));
+        // 病历已确认（前置条件通过）
+        when(medicalRecordService.hasConfirmedRecord(1L)).thenReturn(true);
+        // 检查检验全部完成（前置条件通过）
+        when(examinationService.hasPendingExaminations(1L)).thenReturn(false);
         when(encounterDiagnosisRepository.existsByEncounterIdAndTypeAndSource(1L, "FINAL", "DOCTOR"))
                 .thenReturn(true);
         when(encounterRepository.save(any(Encounter.class))).thenAnswer(invocation -> invocation.getArgument(0));
