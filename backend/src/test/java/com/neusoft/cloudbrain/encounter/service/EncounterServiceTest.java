@@ -17,6 +17,7 @@ import com.neusoft.cloudbrain.encounter.repository.EncounterDiagnosisRepository;
 import com.neusoft.cloudbrain.encounter.repository.EncounterRepository;
 import com.neusoft.cloudbrain.examination.service.ExaminationService;
 import com.neusoft.cloudbrain.medicalrecord.service.MedicalRecordService;
+import com.neusoft.cloudbrain.prescription.service.PrescriptionService;
 import com.neusoft.cloudbrain.patient.entity.Patient;
 import com.neusoft.cloudbrain.patient.repository.PatientRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -79,6 +80,9 @@ class EncounterServiceTest {
 
     @Mock
     private ExaminationService examinationService;
+
+    @Mock
+    private PrescriptionService prescriptionService;
 
     @InjectMocks
     private EncounterService encounterService;
@@ -210,6 +214,8 @@ class EncounterServiceTest {
         when(medicalRecordService.hasConfirmedRecord(1L)).thenReturn(true);
         // 检查检验全部完成
         when(examinationService.hasPendingExaminations(1L)).thenReturn(false);
+        // 无未确认处方
+        when(prescriptionService.hasPendingPrescriptions(1L)).thenReturn(false);
         when(encounterRepository.save(any(Encounter.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(appointmentRepository.updateStatusIfCurrent(eq(1L), eq("IN_PROGRESS"), eq("COMPLETED"), any()))
                 .thenReturn(1);
@@ -484,6 +490,8 @@ class EncounterServiceTest {
         when(medicalRecordService.hasConfirmedRecord(1L)).thenReturn(true);
         // 检查检验全部完成（前置条件通过）
         when(examinationService.hasPendingExaminations(1L)).thenReturn(false);
+        // 无未确认处方
+        when(prescriptionService.hasPendingPrescriptions(1L)).thenReturn(false);
         when(encounterDiagnosisRepository.existsByEncounterIdAndTypeAndSource(1L, "FINAL", "DOCTOR"))
                 .thenReturn(true);
         when(encounterRepository.save(any(Encounter.class))).thenAnswer(invocation -> invocation.getArgument(0));
