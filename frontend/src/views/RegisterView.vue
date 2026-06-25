@@ -3,6 +3,7 @@ import { reactive, ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
+import { registerPatient } from '@/api/patient'
 
 const router = useRouter()
 
@@ -160,13 +161,23 @@ async function handleRegister() {
 
   loading.value = true
   try {
-    // TODO: 阶段1对接后端注册接口 apiClient.post('/auth/register', registerForm)
-    ElMessage.success('注册接口待对接，当前为前端演示')
-
+    // 调用注册接口（后端未就绪时由 api/patient.ts 内部降级为 MOCK）
+    await registerPatient({
+      username: registerForm.username,
+      password: registerForm.password,
+      name: registerForm.realName,
+      gender: registerForm.gender as 'MALE' | 'FEMALE',
+      birthDate: registerForm.birthDate,
+      phone: registerForm.phone,
+    })
+    ElMessage.success('注册成功！请登录')
     setTimeout(() => {
-      ElMessage.success('注册成功！请登录')
       router.push('/')
-    }, 800)
+    }, 600)
+  } catch (e: any) {
+    console.error('注册失败：', e)
+    const msg = e?.response?.data?.message || e?.message || '注册失败，请稍后重试'
+    ElMessage.error(msg)
   } finally {
     loading.value = false
     resetSlider()
