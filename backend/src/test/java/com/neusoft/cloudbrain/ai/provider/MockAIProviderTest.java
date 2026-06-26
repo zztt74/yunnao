@@ -157,7 +157,7 @@ class MockAIProviderTest {
     }
 
     @Test
-    @DisplayName("病历生成响应包含所有必填字段")
+    @DisplayName("病历生成响应包含所有必填字段（6 字段，不含 disclaimer）")
     void medicalRecordResponse_containsAllFields() {
         AIProviderResponse response = provider.generate(
                 new AIProviderRequest("medical_record", "主诉: 头痛"));
@@ -169,7 +169,9 @@ class MockAIProviderTest {
         assertThat(content).contains("physicalExamination");
         assertThat(content).contains("preliminaryDiagnosis");
         assertThat(content).contains("treatmentSuggestion");
-        assertThat(content).contains("disclaimer");
+        // 13_AI能力集成AI任务书.md 第3.3节：病历生成 Schema 为 6 字段，不含 disclaimer
+        // 安全声明由 MedicalRecordAIResult.disclaimer() 固定方法提供，不在 AI 输出 JSON 中
+        assertThat(content).doesNotContain("disclaimer");
     }
 
     @Test
@@ -207,7 +209,9 @@ class MockAIProviderTest {
     @Test
     @DisplayName("所有响应包含安全声明")
     void allResponses_containSafetyNotice() {
-        String[] capabilities = {"triage", "diagnosis", "medical_record", "prescription_review", "result_interpretation"};
+        // 病历生成（medical_record）的 Schema 不含 disclaimer（13_AI能力集成AI任务书.md 第3.3节），
+        // 其安全声明由 MedicalRecordAIResult.disclaimer() 固定方法提供，不在此校验范围内。
+        String[] capabilities = {"triage", "diagnosis", "prescription_review", "result_interpretation"};
         for (String cap : capabilities) {
             AIProviderResponse response = provider.generate(
                     new AIProviderRequest(cap, "测试输入"));
