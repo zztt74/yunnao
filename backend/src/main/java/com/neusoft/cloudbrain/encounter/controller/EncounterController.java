@@ -1,6 +1,7 @@
 package com.neusoft.cloudbrain.encounter.controller;
 
 import com.neusoft.cloudbrain.common.api.ApiResponse;
+import com.neusoft.cloudbrain.common.api.PageResponse;
 import com.neusoft.cloudbrain.encounter.dto.EncounterCancelRequest;
 import com.neusoft.cloudbrain.encounter.dto.EncounterDiagnosisRequest;
 import com.neusoft.cloudbrain.encounter.dto.EncounterDiagnosisResponse;
@@ -9,6 +10,7 @@ import com.neusoft.cloudbrain.encounter.dto.EncounterStartRequest;
 import com.neusoft.cloudbrain.encounter.service.EncounterService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -189,14 +191,14 @@ public class EncounterController {
      * 查询医生就诊列表（分页）
      */
     @GetMapping("/doctor/{doctorId}")
-    public ApiResponse<Page<EncounterResponse>> getByDoctor(
+    public ApiResponse<PageResponse<EncounterResponse>> getByDoctor(
             @PathVariable Long doctorId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") @Max(100) int size,
             HttpServletRequest httpRequest) {
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PageRequest.of(Math.max(0, page - 1), Math.min(size, 100));
         Page<EncounterResponse> response = encounterService.getEncountersByDoctor(doctorId, pageable);
-        return ApiResponse.success(response, (String) httpRequest.getAttribute("traceId"));
+        return ApiResponse.success(PageResponse.from(response), (String) httpRequest.getAttribute("traceId"));
     }
 
     /**
@@ -215,13 +217,13 @@ public class EncounterController {
      * 查询患者就诊列表（分页）
      */
     @GetMapping("/patient/{patientId}")
-    public ApiResponse<Page<EncounterResponse>> getByPatient(
+    public ApiResponse<PageResponse<EncounterResponse>> getByPatient(
             @PathVariable Long patientId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") @Max(100) int size,
             HttpServletRequest httpRequest) {
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PageRequest.of(Math.max(0, page - 1), Math.min(size, 100));
         Page<EncounterResponse> response = encounterService.getEncountersByPatient(patientId, pageable);
-        return ApiResponse.success(response, (String) httpRequest.getAttribute("traceId"));
+        return ApiResponse.success(PageResponse.from(response), (String) httpRequest.getAttribute("traceId"));
     }
 }

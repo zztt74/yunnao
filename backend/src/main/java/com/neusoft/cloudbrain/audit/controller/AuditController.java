@@ -1,12 +1,14 @@
 package com.neusoft.cloudbrain.audit.controller;
 
-import com.neusoft.cloudbrain.audit.entity.AIInvocation;
-import com.neusoft.cloudbrain.audit.entity.AIInvocationAttempt;
+import com.neusoft.cloudbrain.audit.dto.AIInvocationAttemptResponse;
+import com.neusoft.cloudbrain.audit.dto.AIInvocationResponse;
+import com.neusoft.cloudbrain.audit.dto.AuditLogResponse;
 import com.neusoft.cloudbrain.audit.entity.AuditLog;
 import com.neusoft.cloudbrain.audit.service.AuditService;
 import com.neusoft.cloudbrain.common.api.ApiResponse;
 import com.neusoft.cloudbrain.common.api.PageResponse;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.constraints.Max;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -35,6 +37,7 @@ import java.util.List;
  * 关键约束：
  * - 普通患者和医生不能查看系统级日志
  * - 不返回密码、Token、API Key 等敏感信息
+ * - Controller 不直接返回 Entity（40_工程开发规范.md 第2节）
  */
 @RestController
 @RequestMapping("/api/audit")
@@ -51,17 +54,17 @@ public class AuditController {
      * 审计日志查询（综合查询）
      */
     @GetMapping("/logs")
-    public ApiResponse<PageResponse<AuditLog>> queryLogs(
+    public ApiResponse<PageResponse<AuditLogResponse>> queryLogs(
             @RequestParam(required = false) Long operatorId,
             @RequestParam(required = false) String action,
             @RequestParam(required = false) String targetType,
             @RequestParam(required = false) Long targetId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") @Max(100) int size,
             HttpServletRequest httpRequest) {
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PageRequest.of(Math.max(0, page - 1), Math.min(size, 100));
         Page<AuditLog> result;
 
         if (operatorId != null) {
@@ -81,8 +84,11 @@ public class AuditController {
             result = auditService.findByTimeRange(start, end, pageable);
         }
 
-        PageResponse<AuditLog> pageResponse = new PageResponse<>(
-                result.getContent(),
+        List<AuditLogResponse> items = result.getContent().stream()
+                .map(AuditLogResponse::from)
+                .toList();
+        PageResponse<AuditLogResponse> pageResponse = new PageResponse<>(
+                items,
                 result.getNumber() + 1,
                 result.getSize(),
                 result.getTotalElements(),
@@ -94,9 +100,9 @@ public class AuditController {
      * AI 调用详情
      */
     @GetMapping("/ai/invocations/{id}")
-    public ApiResponse<AIInvocation> getInvocation(
+    public ApiResponse<AIInvocationResponse> getInvocation(
             @PathVariable Long id, HttpServletRequest httpRequest) {
-        return ApiResponse.success(auditService.getInvocation(id),
+        return ApiResponse.success(AIInvocationResponse.from(auditService.getInvocation(id)),
                 (String) httpRequest.getAttribute("traceId"));
     }
 
@@ -104,9 +110,10 @@ public class AuditController {
      * AI 调用尝试记录
      */
     @GetMapping("/ai/invocations/{id}/attempts")
-    public ApiResponse<List<AIInvocationAttempt>> getInvocationAttempts(
+    public ApiResponse<List<AIInvocationAttemptResponse>> getInvocationAttempts(
             @PathVariable Long id, HttpServletRequest httpRequest) {
-        return ApiResponse.success(auditService.getInvocationAttempts(id),
+        return ApiResponse.success(
+                AIInvocationAttemptResponse.fromList(auditService.getInvocationAttempts(id)),
                 (String) httpRequest.getAttribute("traceId"));
     }
 }

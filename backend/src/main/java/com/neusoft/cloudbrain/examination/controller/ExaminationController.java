@@ -1,6 +1,7 @@
 package com.neusoft.cloudbrain.examination.controller;
 
 import com.neusoft.cloudbrain.common.api.ApiResponse;
+import com.neusoft.cloudbrain.common.api.PageResponse;
 import com.neusoft.cloudbrain.examination.dto.ExaminationCancelRequest;
 import com.neusoft.cloudbrain.examination.dto.ExaminationOrderCreateRequest;
 import com.neusoft.cloudbrain.examination.dto.ExaminationOrderResponse;
@@ -10,6 +11,7 @@ import com.neusoft.cloudbrain.examination.dto.ExaminationReturnRequest;
 import com.neusoft.cloudbrain.examination.service.ExaminationService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -156,28 +158,28 @@ public class ExaminationController {
      * 按患者 ID 查询申请列表（分页）
      */
     @GetMapping("/patient/{patientId}")
-    public ApiResponse<Page<ExaminationOrderResponse>> getByPatient(
+    public ApiResponse<PageResponse<ExaminationOrderResponse>> getByPatient(
             @PathVariable Long patientId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") @Max(100) int size,
             HttpServletRequest httpRequest) {
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PageRequest.of(Math.max(0, page - 1), Math.min(size, 100));
         Page<ExaminationOrderResponse> response = examinationService.getOrdersByPatient(patientId, pageable);
-        return ApiResponse.success(response, (String) httpRequest.getAttribute("traceId"));
+        return ApiResponse.success(PageResponse.from(response), (String) httpRequest.getAttribute("traceId"));
     }
 
     /**
      * 按医生 ID 查询申请列表（分页）
      */
     @GetMapping("/doctor/{doctorId}")
-    public ApiResponse<Page<ExaminationOrderResponse>> getByDoctor(
+    public ApiResponse<PageResponse<ExaminationOrderResponse>> getByDoctor(
             @PathVariable Long doctorId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") @Max(100) int size,
             HttpServletRequest httpRequest) {
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PageRequest.of(Math.max(0, page - 1), Math.min(size, 100));
         Page<ExaminationOrderResponse> response = examinationService.getOrdersByDoctor(doctorId, pageable);
-        return ApiResponse.success(response, (String) httpRequest.getAttribute("traceId"));
+        return ApiResponse.success(PageResponse.from(response), (String) httpRequest.getAttribute("traceId"));
     }
 
     /**

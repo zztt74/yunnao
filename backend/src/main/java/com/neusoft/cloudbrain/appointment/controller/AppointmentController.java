@@ -5,8 +5,10 @@ import com.neusoft.cloudbrain.appointment.dto.AppointmentCreateRequest;
 import com.neusoft.cloudbrain.appointment.dto.AppointmentResponse;
 import com.neusoft.cloudbrain.appointment.service.AppointmentService;
 import com.neusoft.cloudbrain.common.api.ApiResponse;
+import com.neusoft.cloudbrain.common.api.PageResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -73,28 +75,28 @@ public class AppointmentController {
      * 查询患者挂号列表（分页）
      */
     @GetMapping("/patient/{patientId}")
-    public ApiResponse<Page<AppointmentResponse>> getByPatient(
+    public ApiResponse<PageResponse<AppointmentResponse>> getByPatient(
             @PathVariable Long patientId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") @Max(100) int size,
             HttpServletRequest httpRequest) {
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PageRequest.of(Math.max(0, page - 1), Math.min(size, 100));
         Page<AppointmentResponse> response = appointmentService.getAppointmentsByPatient(patientId, pageable);
-        return ApiResponse.success(response, (String) httpRequest.getAttribute("traceId"));
+        return ApiResponse.success(PageResponse.from(response), (String) httpRequest.getAttribute("traceId"));
     }
 
     /**
      * 查询医生挂号列表（分页）
      */
     @GetMapping("/doctor/{doctorId}")
-    public ApiResponse<Page<AppointmentResponse>> getByDoctor(
+    public ApiResponse<PageResponse<AppointmentResponse>> getByDoctor(
             @PathVariable Long doctorId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") @Max(100) int size,
             HttpServletRequest httpRequest) {
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PageRequest.of(Math.max(0, page - 1), Math.min(size, 100));
         Page<AppointmentResponse> response = appointmentService.getAppointmentsByDoctor(doctorId, pageable);
-        return ApiResponse.success(response, (String) httpRequest.getAttribute("traceId"));
+        return ApiResponse.success(PageResponse.from(response), (String) httpRequest.getAttribute("traceId"));
     }
 
     /**
@@ -109,12 +111,15 @@ public class AppointmentController {
     }
 
     /**
-     * 管理员查看全部挂号
+     * 管理员查看全部挂号（分页）
      */
     @GetMapping
-    public ApiResponse<List<AppointmentResponse>> getAll(
+    public ApiResponse<PageResponse<AppointmentResponse>> getAll(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") @Max(100) int size,
             HttpServletRequest httpRequest) {
-        List<AppointmentResponse> response = appointmentService.getAllAppointments();
-        return ApiResponse.success(response, (String) httpRequest.getAttribute("traceId"));
+        Pageable pageable = PageRequest.of(Math.max(0, page - 1), Math.min(size, 100));
+        Page<AppointmentResponse> response = appointmentService.getAllAppointments(pageable);
+        return ApiResponse.success(PageResponse.from(response), (String) httpRequest.getAttribute("traceId"));
     }
 }

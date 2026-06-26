@@ -3,6 +3,7 @@ package com.neusoft.cloudbrain.statistics.service;
 import com.neusoft.cloudbrain.statistics.dto.*;
 import com.neusoft.cloudbrain.statistics.repository.StatisticsRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,8 +32,9 @@ public class StatisticsService {
     private final StatisticsRepository statisticsRepository;
 
     /**
-     * 仪表盘概览（今日数据）
+     * 仪表盘概览（今日数据，缓存 5 分钟）
      */
+    @Cacheable(value = "statistics", key = "'dashboard'")
     public DashboardSummary getDashboardSummary() {
         LocalDateTime dayStart = todayStart();
         LocalDateTime dayEnd = todayStart().plusDays(1);
@@ -45,6 +47,7 @@ public class StatisticsService {
      * @param days 天数（7 或 30）
      * @param departmentId 科室 ID（可选）
      */
+    @Cacheable(value = "statistics", key = "'daily_outpatient_' + #days + '_' + #departmentId")
     public List<DailyOutpatientStatistics> getDailyOutpatientStatistics(int days, Long departmentId) {
         LocalDateTime end = todayStart().plusDays(1);
         LocalDateTime start = end.minusDays(days);
@@ -54,6 +57,7 @@ public class StatisticsService {
     /**
      * 医生接诊量排行
      */
+    @Cacheable(value = "statistics", key = "'doctor_encounter_' + #startDate + '_' + #endDate + '_' + #departmentId")
     public List<DoctorEncounterStatistics> getDoctorEncounterStatistics(
             LocalDate startDate, LocalDate endDate, Long departmentId) {
         LocalDateTime[] range = toRange(startDate, endDate);
@@ -63,6 +67,7 @@ public class StatisticsService {
     /**
      * 科室门诊量统计
      */
+    @Cacheable(value = "statistics", key = "'dept_outpatient_' + #startDate + '_' + #endDate")
     public List<DepartmentOutpatientStatistics> getDepartmentOutpatientStatistics(
             LocalDate startDate, LocalDate endDate) {
         LocalDateTime[] range = toRange(startDate, endDate);
@@ -72,6 +77,7 @@ public class StatisticsService {
     /**
      * 挂号完成率/取消率统计
      */
+    @Cacheable(value = "statistics", key = "'appt_rate_' + #startDate + '_' + #endDate + '_' + #departmentId")
     public AppointmentRateStatistics getAppointmentRateStatistics(
             LocalDate startDate, LocalDate endDate, Long departmentId) {
         LocalDateTime[] range = toRange(startDate, endDate);
@@ -81,6 +87,7 @@ public class StatisticsService {
     /**
      * 设备使用率统计
      */
+    @Cacheable(value = "statistics", key = "'device_usage_' + #startDate + '_' + #endDate + '_' + #departmentId")
     public List<DeviceUsageStatistics> getDeviceUsageStatistics(
             LocalDate startDate, LocalDate endDate, Long departmentId) {
         LocalDateTime[] range = toRange(startDate, endDate);
@@ -90,6 +97,7 @@ public class StatisticsService {
     /**
      * AI 调用统计
      */
+    @Cacheable(value = "statistics", key = "'ai_' + #startDate + '_' + #endDate")
     public AIStatistics getAIStatistics(LocalDate startDate, LocalDate endDate) {
         LocalDateTime[] range = toRange(startDate, endDate);
         return statisticsRepository.getAIStatistics(range[0], range[1]);
@@ -98,6 +106,7 @@ public class StatisticsService {
     /**
      * 按能力分组的 AI 调用统计
      */
+    @Cacheable(value = "statistics", key = "'ai_capability_' + #startDate + '_' + #endDate")
     public List<AICapabilityStatistics> getAICapabilityStatistics(
             LocalDate startDate, LocalDate endDate) {
         LocalDateTime[] range = toRange(startDate, endDate);

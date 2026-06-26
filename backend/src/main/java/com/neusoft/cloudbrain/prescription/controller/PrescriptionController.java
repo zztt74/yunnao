@@ -1,12 +1,14 @@
 package com.neusoft.cloudbrain.prescription.controller;
 
 import com.neusoft.cloudbrain.common.api.ApiResponse;
+import com.neusoft.cloudbrain.common.api.PageResponse;
 import com.neusoft.cloudbrain.prescription.dto.PrescriptionCreateRequest;
 import com.neusoft.cloudbrain.prescription.dto.PrescriptionResponse;
 import com.neusoft.cloudbrain.prescription.dto.PrescriptionVoidRequest;
 import com.neusoft.cloudbrain.prescription.service.PrescriptionService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -125,27 +127,27 @@ public class PrescriptionController {
      * 按患者 ID 查询处方列表（分页）
      */
     @GetMapping("/patient/{patientId}")
-    public ApiResponse<Page<PrescriptionResponse>> getByPatient(
+    public ApiResponse<PageResponse<PrescriptionResponse>> getByPatient(
             @PathVariable Long patientId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") @Max(100) int size,
             HttpServletRequest httpRequest) {
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PageRequest.of(Math.max(0, page - 1), Math.min(size, 100));
         Page<PrescriptionResponse> response = prescriptionService.getPrescriptionsByPatient(patientId, pageable);
-        return ApiResponse.success(response, (String) httpRequest.getAttribute("traceId"));
+        return ApiResponse.success(PageResponse.from(response), (String) httpRequest.getAttribute("traceId"));
     }
 
     /**
      * 按医生 ID 查询处方列表（分页）
      */
     @GetMapping("/doctor/{doctorId}")
-    public ApiResponse<Page<PrescriptionResponse>> getByDoctor(
+    public ApiResponse<PageResponse<PrescriptionResponse>> getByDoctor(
             @PathVariable Long doctorId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") @Max(100) int size,
             HttpServletRequest httpRequest) {
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PageRequest.of(Math.max(0, page - 1), Math.min(size, 100));
         Page<PrescriptionResponse> response = prescriptionService.getPrescriptionsByDoctor(doctorId, pageable);
-        return ApiResponse.success(response, (String) httpRequest.getAttribute("traceId"));
+        return ApiResponse.success(PageResponse.from(response), (String) httpRequest.getAttribute("traceId"));
     }
 }
