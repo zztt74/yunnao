@@ -31,7 +31,7 @@ import static org.mockito.Mockito.when;
  * - 5 类主诉路径：胸痛/头痛/发热/腹痛/外伤
  * - 7 Mock 场景：正常/高风险（胸痛→HIGH）/空/超时/非法JSON/不存在科室/异常
  * - 降级：超时降级到手动流程、非法 JSON 映射 AI_INVALID_RESPONSE
- * - Schema 校验：priority 枚举受控、departmentCode 枚举受控
+ * - Schema 校验：priority 枚举受控（departmentCode 由业务侧 findByCode 拒绝，AI 不做枚举校验）
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("AITriageServiceImpl - 分诊服务测试")
@@ -264,7 +264,7 @@ class AITriageServiceImplTest {
         }
 
         @Test
-        @DisplayName("不存在科室场景：departmentCode 校验失败 → AI_INVALID_RESPONSE")
+        @DisplayName("不存在科室场景：AI 透传结果，由业务侧 findByCode 拒绝")
         void scenario_notExistDept() {
             TriageAIRequest request = new TriageAIRequest(
                     "30-40", "MALE", "MOCK_NOT_EXIST_DEPT", null, null);
@@ -276,12 +276,12 @@ class AITriageServiceImplTest {
                     "safetyNotice":"本结果由 AI 辅助生成，仅供辅助参考，最终诊断请由医生确认",
                     "emergencySuggested":false}""");
 
-            assertThatThrownBy(() -> service.analyze(request))
-                    .isInstanceOf(BusinessException.class)
-                    .satisfies(ex -> {
-                        BusinessException be = (BusinessException) ex;
-                        assertThat(be.getCode()).isEqualTo("AI_INVALID_RESPONSE");
-                    });
+            // AI 侧不做 departmentCode 枚举校验，直接透传给业务模块
+            // 业务模块 TriageService.mapDepartment 会 findByCode 查不到 → mappingStatus=MANUAL
+            TriageAIResult result = service.analyze(request);
+
+            assertThat(result.departmentCode()).isEqualTo("DEPT_NOT_EXIST_999");
+            assertThat(result.priority()).isEqualTo("MEDIUM");
         }
 
         @Test
@@ -320,27 +320,6 @@ class AITriageServiceImplTest {
             mockRecorderReturn("""
                     {"departmentCode":"DEPT_NEUROLOGY","priority":"CRITICAL",
                     "symptomKeywords":["头痛"],
-                    "reason":"测试",
-                    "safetyNotice":"本结果由 AI 辅助生成，仅供辅助参考，最终诊断请由医生确认",
-                    "emergencySuggested":false}""");
-
-            assertThatThrownBy(() -> service.analyze(request))
-                    .isInstanceOf(BusinessException.class)
-                    .satisfies(ex -> {
-                        BusinessException be = (BusinessException) ex;
-                        assertThat(be.getCode()).isEqualTo("AI_INVALID_RESPONSE");
-                    });
-        }
-
-        @Test
-        @DisplayName("departmentCode 枚举非法 → AI_INVALID_RESPONSE")
-        void validate_departmentCodeInvalid() {
-            TriageAIRequest request = new TriageAIRequest(
-                    "30-40", "FEMALE", "腹痛", "1天", null);
-
-            mockRecorderReturn("""
-                    {"departmentCode":"DEPT_FAKE","priority":"MEDIUM",
-                    "symptomKeywords":["腹痛"],
                     "reason":"测试",
                     "safetyNotice":"本结果由 AI 辅助生成，仅供辅助参考，最终诊断请由医生确认",
                     "emergencySuggested":false}""");

@@ -37,14 +37,6 @@ public class AITriageServiceImpl implements AITriageService {
     private static final String CAPABILITY = "triage";
     private static final Set<String> ALLOWED_PRIORITIES = Set.of("EMERGENCY", "HIGH", "MEDIUM", "LOW");
 
-    /**
-     * 受控科室编码（来自 V010__base_data.sql 基础数据）
-     */
-    private static final Set<String> ALLOWED_DEPARTMENTS = Set.of(
-            "DEPT_INTERNAL", "DEPT_CARDIOLOGY", "DEPT_NEUROLOGY",
-            "DEPT_SURGERY", "DEPT_GENERAL_SURGERY",
-            "DEPT_PEDIATRICS", "DEPT_EMERGENCY");
-
     private final AIInvocationRecorder recorder;
     private final JsonSchemaParser jsonSchemaParser;
     private final PromptManager promptManager;
@@ -85,7 +77,6 @@ public class AITriageServiceImpl implements AITriageService {
         jsonSchemaParser.validateRequired(node,
                 "departmentCode", "priority", "symptomKeywords", "reason", "safetyNotice");
         jsonSchemaParser.validateEnum(node, "priority", ALLOWED_PRIORITIES);
-        jsonSchemaParser.validateEnum(node, "departmentCode", ALLOWED_DEPARTMENTS);
 
         List<String> keywords = jsonSchemaParser.parseStringArray(node, "symptomKeywords");
         boolean emergency = node.has("emergencySuggested") && node.get("emergencySuggested").asBoolean(false);
