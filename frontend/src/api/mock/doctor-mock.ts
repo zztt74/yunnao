@@ -14,6 +14,7 @@ import type {
 import type {
   MedicalRecord,
   MedicalRecordAiResponse,
+  MedicalRecordStatus,
 } from '@/types/medical-record'
 import type {
   ExaminationResponse,
@@ -955,7 +956,7 @@ export function saveMedicalRecord(
     physicalExam?: string
     preliminaryDiagnosis?: string
     treatmentAdvice?: string
-    status: 'DRAFT' | 'AI_GENERATED' | 'CONFIRMED'
+    status: MedicalRecordStatus
   },
 ): MedicalRecord {
   const existing = mockMedicalRecordStore.find((m) => m.encounterId === encounterId)

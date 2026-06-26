@@ -25,7 +25,7 @@ const diagnosisMap = ref<Record<number, EncounterDiagnosisResponse[]>>({})
 const statusFilter = ref<'ALL' | EncounterResponse['status']>('ALL')
 const searchKey = ref('')
 
-const statusOptions = [
+const statusOptions: { value: 'ALL' | EncounterResponse['status']; label: string }[] = [
   { value: 'ALL', label: '全部' },
   { value: 'IN_PROGRESS', label: '接诊中' },
   { value: 'WAITING_EXAM', label: '等待检查' },
