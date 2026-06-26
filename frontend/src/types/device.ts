@@ -3,7 +3,9 @@
 // §13.6：每次设备状态变化必须记录来源状态、目标状态、操作人、时间和原因
 
 // 设备状态（§13.6）
-export type DeviceStatus = 'AVAILABLE' | 'IN_USE' | 'MAINTENANCE' | 'DISABLED'
+// 基础版本：AVAILABLE / IN_USE / ABNORMAL / DISABLED
+// 扩展版本：MAINTENANCE（维修）
+export type DeviceStatus = 'AVAILABLE' | 'IN_USE' | 'ABNORMAL' | 'MAINTENANCE' | 'DISABLED'
 
 // 设备分类
 export type DeviceCategory =

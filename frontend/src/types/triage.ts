@@ -21,3 +21,10 @@ export interface TriageResultResponse {
   followUpQuestion?: string // AI 追问（可选）
   createdAt: string // ISO 8601 +08:00
 }
+
+// 管理端分诊记录扩展视图（补充患者姓名、症状、AI 摘要）
+export interface AdminTriageRecord extends TriageResultResponse {
+  patientName: string
+  symptoms: string
+  aiSummary: string
+}
