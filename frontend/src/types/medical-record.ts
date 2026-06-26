@@ -54,3 +54,41 @@ export interface MedicalRecord {
   createdAt: string
   updatedAt: string
 }
+
+// ===== 医生端：病历生成与编辑 =====
+
+// AI 生成病历请求（医生提交问诊上下文）
+export interface MedicalRecordAiRequest {
+  encounterId: number
+  chiefComplaint: string
+  presentIllness?: string
+  pastHistory?: string
+  physicalExam?: string
+  // 已有的医生最终诊断（用于回填初步诊断）
+  diagnoses?: string[]
+}
+
+// AI 生成病历响应（草稿，状态 AI_GENERATED，医生必须确认）
+export interface MedicalRecordAiResponse {
+  encounterId: number
+  chiefComplaint: string
+  presentIllness: string
+  pastHistory: string
+  physicalExam: string
+  preliminaryDiagnosis: string
+  treatmentAdvice: string
+  aiStatus: 'SUCCESS' | 'FAILED'
+  aiFailureReason?: string
+}
+
+// 医生保存病历草稿/确认请求
+export interface MedicalRecordSaveRequest {
+  encounterId: number
+  chiefComplaint: string
+  presentIllness: string
+  pastHistory?: string
+  physicalExam?: string
+  preliminaryDiagnosis?: string
+  treatmentAdvice?: string
+  status: MedicalRecordStatus
+}

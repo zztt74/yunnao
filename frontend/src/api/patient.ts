@@ -4,6 +4,8 @@ import type {
   PatientProfileResponse,
   PatientProfileUpdateRequest,
   PatientUpdateRequest,
+  PatientDetailResponse,
+  PatientTimelineEntry,
 } from '@/types/patient'
 import {
   getMockPatientInfo,
@@ -11,6 +13,10 @@ import {
   updateMockPatientInfo,
   updateMockPatientProfile,
 } from '@/api/mock/medical-mock'
+import {
+  getPatientDetail as mockGetPatientDetail,
+  getPatientTimeline as mockGetPatientTimeline,
+} from '@/api/mock/doctor-mock'
 
 // MOCK 模式：后端 /api/patients/* 暂未就绪，使用本地演示数据
 // 后端就绪后请把下面 MOCK 实现替换为真实调用即可，参考 patient.ts 真实接口的写法：
@@ -93,4 +99,32 @@ export async function updatePatientInfo(
   // 后端就绪后请替换为：
   // const res = await apiClient.put('/patients/me', payload)
   // return parseApiResponse(res.data)
+}
+
+// ===== 医生端：患者详情与诊疗时间线（§3.3、§3.4）=====
+
+/**
+ * 查询患者详情（医生端，§3.3：接诊关系成立后医生可见必要信息）
+ * - 含基本信息、过敏史、既往史等扩展档案
+ */
+export async function getPatientDetail(
+  patientId: number,
+): Promise<PatientDetailResponse> {
+  console.warn('[MOCK] /api/patients/{id} 后端未就绪，使用本地虚构演示数据')
+  await delay(300)
+  const detail = mockGetPatientDetail(patientId)
+  if (!detail) throw new Error('患者不存在或无接诊关系')
+  return detail
+}
+
+/**
+ * 查询患者诊疗时间线（§3.4，按时间倒序）
+ * - 串联历次分诊/挂号/就诊/检查检验/病历/处方
+ */
+export async function getPatientTimeline(
+  patientId: number,
+): Promise<PatientTimelineEntry[]> {
+  console.warn('[MOCK] /api/patients/{id}/timeline 后端未就绪，使用本地虚构演示数据')
+  await delay(400)
+  return mockGetPatientTimeline(patientId)
 }
