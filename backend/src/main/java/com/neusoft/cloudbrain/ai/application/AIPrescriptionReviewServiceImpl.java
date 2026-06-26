@@ -22,17 +22,20 @@ import java.util.Set;
 /**
  * AI 处方审核服务实现
  *
- * 重构后（任务 STAGE-AI-1）：
+ * 重构后（任务 STAGE-AI-5）：
  * - 通过 AIInvocationRecorder 统一调用 Provider（含重试和调用记录）
- * - 通过 JsonSchemaParser 解析和校验 AI 响应
+ * - 通过 JsonSchemaParser 解析和校验 AI 响应（6 字段 Schema）
  * - 通过 PromptManager 获取 system prompt 和版本
  * - 关键词 Mock 逻辑已下沉到 MockAIProvider
  * - 确定性规则结果与 AI 结果合并，AI 不得降低规则命中的风险等级
+ * - 冲突检测：AI 风险等级低于规则命中等级时，以规则为准，并记录冲突
  *
- * 规则（来自 32_AI能力契约规范.md 第3节 和 11_功能需求.md 第12.6节）：
+ * 规则（来自 13_AI能力集成AI任务书.md 第3.4节、32_AI能力契约规范.md 第3节）：
+ * - 输入必须包含后端确定性规则检查结果
  * - 确定性规则命中不得被 AI 输出降级或覆盖
  * - AI 只负责解释风险和补充建议
- * - 不得自动确认处方
+ * - 不得自动确认处方（无 approved 状态产出）
+ * - AI 结果与规则结果冲突时以规则为准，并记录冲突
  */
 @Slf4j
 @Service
@@ -77,10 +80,13 @@ public class AIPrescriptionReviewServiceImpl implements AIPrescriptionReviewServ
 
     /**
      * 解析处方审核响应（由 AIInvocationRecorder 调用）
+     *
+     * Schema（6 字段，来自 13_AI能力集成AI任务书.md 第3.4节）：
+     * riskLevel, allergyWarnings, interactionWarnings, dosageWarnings, recommendations, summary
      */
     private PrescriptionReviewAIResult parsePrescriptionReviewResponse(String content) {
         JsonNode node = jsonSchemaParser.parse(content);
-        jsonSchemaParser.validateRequired(node, "riskLevel", "disclaimer");
+        jsonSchemaParser.validateRequired(node, "riskLevel", "recommendations", "summary");
         jsonSchemaParser.validateEnum(node, "riskLevel", ALLOWED_RISK_LEVELS);
 
         return new PrescriptionReviewAIResult(
@@ -88,15 +94,16 @@ public class AIPrescriptionReviewServiceImpl implements AIPrescriptionReviewServ
                 jsonSchemaParser.parseStringArray(node, "allergyWarnings"),
                 jsonSchemaParser.parseStringArray(node, "interactionWarnings"),
                 jsonSchemaParser.parseStringArray(node, "dosageWarnings"),
-                jsonSchemaParser.parseStringArray(node, "contraindicationWarnings"),
-                node.has("suggestions") ? node.get("suggestions").asText() : "",
-                node.get("disclaimer").asText());
+                node.get("recommendations").asText(),
+                node.get("summary").asText());
     }
 
     /**
      * 合并 AI 结果与确定性规则结果
      *
-     * 关键规则：AI 不得降低确定性规则命中的风险等级
+     * 关键规则（来自 13_AI能力集成AI任务书.md 第3.4节）：
+     * - AI 风险等级不得低于规则命中等级（沿用 determineAIRiskLevel / maxLevel 逻辑）
+     * - AI 结果与规则冲突时以规则为准，并记录冲突
      */
     private PrescriptionReviewAIResult mergeWithRuleResult(
             PrescriptionReviewAIResult aiResult, DeterministicRuleResult ruleResult) {
@@ -105,7 +112,15 @@ public class AIPrescriptionReviewServiceImpl implements AIPrescriptionReviewServ
         }
 
         String ruleRiskLevel = ruleResult.riskLevel() == null ? "SAFE" : ruleResult.riskLevel();
-        String mergedRiskLevel = maxLevel(ruleRiskLevel, aiResult.riskLevel());
+        String aiRiskLevel = aiResult.riskLevel();
+        String mergedRiskLevel = maxLevel(ruleRiskLevel, aiRiskLevel);
+
+        // 冲突检测：AI 风险等级低于规则命中等级，记录冲突
+        boolean conflict = riskOrder(ruleRiskLevel) > riskOrder(aiRiskLevel);
+        if (conflict) {
+            log.warn("处方审核冲突：AI 风险等级 {} 低于规则命中等级 {}，以规则为准。ruleSummary={}",
+                    aiRiskLevel, ruleRiskLevel, ruleResult.summary());
+        }
 
         List<String> allergyWarnings = mergeLists(
                 ruleResult.allergyWarnings(), aiResult.allergyWarnings());
@@ -113,23 +128,24 @@ public class AIPrescriptionReviewServiceImpl implements AIPrescriptionReviewServ
                 ruleResult.interactionWarnings(), aiResult.interactionWarnings());
         List<String> dosageWarnings = mergeLists(
                 ruleResult.dosageWarnings(), aiResult.dosageWarnings());
-        List<String> contraindicationWarnings = mergeLists(
-                ruleResult.contraindicationWarnings(), aiResult.contraindicationWarnings());
 
-        String suggestions = aiResult.suggestions();
-        if (suggestions == null || suggestions.isBlank()) {
-            suggestions = buildSuggestions(mergedRiskLevel, allergyWarnings,
-                    interactionWarnings, dosageWarnings, contraindicationWarnings);
+        String recommendations = aiResult.recommendations();
+        if (recommendations == null || recommendations.isBlank()) {
+            recommendations = buildRecommendations(mergedRiskLevel, allergyWarnings,
+                    interactionWarnings, dosageWarnings);
         }
+
+        // summary 合并：规则 summary + 冲突记录 + AI summary
+        String summary = buildMergedSummary(ruleResult, aiResult, conflict,
+                ruleRiskLevel, aiRiskLevel, mergedRiskLevel);
 
         return new PrescriptionReviewAIResult(
                 mergedRiskLevel,
                 allergyWarnings,
                 interactionWarnings,
                 dosageWarnings,
-                contraindicationWarnings,
-                suggestions,
-                aiResult.disclaimer());
+                recommendations,
+                summary);
     }
 
     /**
@@ -165,15 +181,11 @@ public class AIPrescriptionReviewServiceImpl implements AIPrescriptionReviewServ
         };
     }
 
-    private String buildSuggestions(String riskLevel, List<String> allergyWarnings,
-                                    List<String> interactionWarnings, List<String> dosageWarnings,
-                                    List<String> contraindicationWarnings) {
+    private String buildRecommendations(String riskLevel, List<String> allergyWarnings,
+                                        List<String> interactionWarnings, List<String> dosageWarnings) {
         List<String> parts = new ArrayList<>();
         if (allergyWarnings != null && !allergyWarnings.isEmpty()) {
             parts.add("存在过敏禁忌，建议更换药品。");
-        }
-        if (contraindicationWarnings != null && !contraindicationWarnings.isEmpty()) {
-            parts.add("存在用药禁忌，建议重新评估。");
         }
         if (interactionWarnings != null && !interactionWarnings.isEmpty()) {
             parts.add("存在药物相互作用，建议调整用药方案。");
@@ -185,6 +197,34 @@ public class AIPrescriptionReviewServiceImpl implements AIPrescriptionReviewServ
             parts.add("处方用药基本合理，请医生结合临床最终确认。");
         }
         parts.add("风险等级：" + riskLevel + "。");
+        return String.join(" ", parts);
+    }
+
+    /**
+     * 构建合并后的 summary，包含冲突记录
+     *
+     * 冲突记录格式（可追溯，写入 summary 供 AIInvocation 记录）：
+     * "[冲突] AI 风险等级 X 低于规则命中等级 Y，已以规则为准"
+     */
+    private String buildMergedSummary(DeterministicRuleResult ruleResult,
+                                      PrescriptionReviewAIResult aiResult,
+                                      boolean conflict,
+                                      String ruleRiskLevel,
+                                      String aiRiskLevel,
+                                      String mergedRiskLevel) {
+        List<String> parts = new ArrayList<>();
+        if (ruleResult.summary() != null && !ruleResult.summary().isBlank()) {
+            parts.add("规则结果：" + ruleResult.summary());
+        }
+        if (aiResult.summary() != null && !aiResult.summary().isBlank()) {
+            parts.add("AI 解读：" + aiResult.summary());
+        }
+        if (conflict) {
+            parts.add("[冲突] AI 风险等级 " + aiRiskLevel
+                    + " 低于规则命中等级 " + ruleRiskLevel
+                    + "，已以规则为准，最终风险等级 " + mergedRiskLevel);
+        }
+        parts.add("最终风险等级：" + mergedRiskLevel + "。");
         return String.join(" ", parts);
     }
 
@@ -200,6 +240,9 @@ public class AIPrescriptionReviewServiceImpl implements AIPrescriptionReviewServ
         sb.append("过敏史: ").append(safe(request.patientAllergies())).append("; ");
         if (request.deterministicRuleResult() != null) {
             sb.append("规则风险: ").append(safe(request.deterministicRuleResult().riskLevel()));
+            if (request.deterministicRuleResult().summary() != null) {
+                sb.append("; 规则摘要: ").append(request.deterministicRuleResult().summary());
+            }
         }
         return sb.toString();
     }
