@@ -16,6 +16,10 @@ spring:
     locations: classpath:db/migration
   jackson:
     time-zone: Asia/Shanghai
+    serialization:
+      # 时间字段输出 ISO 8601 字符串而非 epoch 数字
+      # （30_接口数据与错误契约.md §5、33_错误码与时间规范.md §5）
+      write-dates-as-timestamps: false
 
 server:
   port: ${SERVER_PORT:8080}

@@ -1,10 +1,12 @@
 package com.neusoft.cloudbrain.drug.controller;
 
 import com.neusoft.cloudbrain.common.api.ApiResponse;
+import com.neusoft.cloudbrain.common.api.PageResponse;
 import com.neusoft.cloudbrain.drug.dto.DrugInteractionResponse;
 import com.neusoft.cloudbrain.drug.dto.DrugResponse;
 import com.neusoft.cloudbrain.drug.service.DrugService;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.constraints.Max;
 import org.springframework.data.domain.Page;
 import org.springframework.web.bind.annotation.*;
 
@@ -34,18 +36,19 @@ public class DrugController {
      * 获取药品列表（分页）
      */
     @GetMapping
-    public ApiResponse<Page<DrugResponse>> list(
+    public ApiResponse<PageResponse<DrugResponse>> list(
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(defaultValue = "20") @Max(100) int pageSize,
             @RequestParam(required = false) String name,
             HttpServletRequest httpRequest) {
+        int cappedSize = Math.min(pageSize, 100);
         Page<DrugResponse> result;
         if (name != null && !name.isBlank()) {
-            result = drugService.searchByName(name, page, pageSize);
+            result = drugService.searchByName(name, page, cappedSize);
         } else {
-            result = drugService.getDrugList(page, pageSize);
+            result = drugService.getDrugList(page, cappedSize);
         }
-        return ApiResponse.success(result, (String) httpRequest.getAttribute("traceId"));
+        return ApiResponse.success(PageResponse.from(result), (String) httpRequest.getAttribute("traceId"));
     }
 
     /**

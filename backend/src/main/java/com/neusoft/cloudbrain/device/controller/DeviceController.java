@@ -1,6 +1,7 @@
 package com.neusoft.cloudbrain.device.controller;
 
 import com.neusoft.cloudbrain.common.api.ApiResponse;
+import com.neusoft.cloudbrain.common.api.PageResponse;
 import com.neusoft.cloudbrain.device.dto.DeviceEndUsageRequest;
 import com.neusoft.cloudbrain.device.dto.DeviceResponse;
 import com.neusoft.cloudbrain.device.dto.DeviceStartUsageRequest;
@@ -10,6 +11,7 @@ import com.neusoft.cloudbrain.device.dto.DeviceUsageResponse;
 import com.neusoft.cloudbrain.device.service.DeviceService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -159,17 +161,17 @@ public class DeviceController {
      * 搜索设备（关键字 + 状态 + 类型 + 科室）
      */
     @GetMapping
-    public ApiResponse<Page<DeviceResponse>> search(
+    public ApiResponse<PageResponse<DeviceResponse>> search(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String type,
             @RequestParam(required = false) Long departmentId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") @Max(100) int size,
             HttpServletRequest httpRequest) {
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PageRequest.of(Math.max(0, page - 1), Math.min(size, 100));
         Page<DeviceResponse> response = deviceService.searchDevices(keyword, status, type, departmentId, pageable);
-        return ApiResponse.success(response, (String) httpRequest.getAttribute("traceId"));
+        return ApiResponse.success(PageResponse.from(response), (String) httpRequest.getAttribute("traceId"));
     }
 
     /**
@@ -209,13 +211,13 @@ public class DeviceController {
      * 查询操作人的设备使用记录（分页）
      */
     @GetMapping("/user/{userId}/usage")
-    public ApiResponse<Page<DeviceUsageResponse>> getUsageByUser(
+    public ApiResponse<PageResponse<DeviceUsageResponse>> getUsageByUser(
             @PathVariable Long userId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") @Max(100) int size,
             HttpServletRequest httpRequest) {
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PageRequest.of(Math.max(0, page - 1), Math.min(size, 100));
         Page<DeviceUsageResponse> response = deviceService.getDeviceUsageByUser(userId, pageable);
-        return ApiResponse.success(response, (String) httpRequest.getAttribute("traceId"));
+        return ApiResponse.success(PageResponse.from(response), (String) httpRequest.getAttribute("traceId"));
     }
 }

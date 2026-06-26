@@ -1,6 +1,7 @@
 package com.neusoft.cloudbrain.schedule.controller;
 
 import com.neusoft.cloudbrain.common.api.ApiResponse;
+import com.neusoft.cloudbrain.common.api.PageResponse;
 import com.neusoft.cloudbrain.schedule.dto.ScheduleCancelRequest;
 import com.neusoft.cloudbrain.schedule.dto.ScheduleCreateRequest;
 import com.neusoft.cloudbrain.schedule.dto.ScheduleResponse;
@@ -8,6 +9,7 @@ import com.neusoft.cloudbrain.schedule.dto.ScheduleUpdateRequest;
 import com.neusoft.cloudbrain.schedule.service.ScheduleService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -87,14 +89,14 @@ public class ScheduleController {
      * 按医生查询排班（分页）
      */
     @GetMapping("/doctor/{doctorId}")
-    public ApiResponse<Page<ScheduleResponse>> getByDoctor(
+    public ApiResponse<PageResponse<ScheduleResponse>> getByDoctor(
             @PathVariable Long doctorId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") @Max(100) int size,
             HttpServletRequest httpRequest) {
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PageRequest.of(Math.max(0, page - 1), Math.min(size, 100));
         Page<ScheduleResponse> response = scheduleService.getSchedulesByDoctor(doctorId, pageable);
-        return ApiResponse.success(response, (String) httpRequest.getAttribute("traceId"));
+        return ApiResponse.success(PageResponse.from(response), (String) httpRequest.getAttribute("traceId"));
     }
 
     /**

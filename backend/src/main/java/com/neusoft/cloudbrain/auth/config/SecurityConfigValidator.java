@@ -2,9 +2,9 @@ package com.neusoft.cloudbrain.auth.config;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
+
+import jakarta.annotation.PostConstruct;
 
 /**
  * 安全配置验证器
@@ -15,6 +15,12 @@ import org.springframework.stereotype.Component;
  * - 数据库密码已配置
  *
  * 缺少必需安全配置时拒绝启动
+ *
+ * 实现说明：
+ *   使用 @PostConstruct 在 Bean 初始化阶段校验，确保 Web 服务器开始监听端口前
+ *   即抛出异常阻止应用启动（参见 30_接口数据与错误契约.md 11.2:
+ *   "生产或演示环境缺少 JWT 密钥、管理员初始密码或数据库密码时必须拒绝启动"）。
+ *   此前使用 ApplicationReadyEvent 会在端口已监听后才校验，存在短暂窗口期。
  */
 @Slf4j
 @Component
@@ -29,10 +35,8 @@ public class SecurityConfigValidator {
     @Value("${spring.datasource.password:}")
     private String dbPassword;
 
-    @EventListener(ApplicationReadyEvent.class)
+    @PostConstruct
     public void validateSecurityConfig() {
-        log.info("正在验证安全配置...");
-
         // 检查 JWT 密钥
         if (jwtSecret == null || jwtSecret.length() < 32) {
             String errorMsg = "JWT 密钥未配置或长度不足 32 字节，请设置环境变量 JWT_SECRET";

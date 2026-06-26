@@ -212,13 +212,12 @@ public class AppointmentService {
     }
 
     /**
-     * 管理员查看全部挂号
+     * 管理员查看全部挂号（分页）
      */
     @Transactional(readOnly = true)
-    public List<AppointmentResponse> getAllAppointments() {
-        return appointmentRepository.findAll().stream()
-                .map(this::toResponse)
-                .collect(Collectors.toList());
+    public Page<AppointmentResponse> getAllAppointments(Pageable pageable) {
+        return appointmentRepository.findAll(pageable)
+                .map(this::toResponse);
     }
 
     /**

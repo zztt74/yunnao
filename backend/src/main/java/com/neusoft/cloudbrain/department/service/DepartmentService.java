@@ -7,6 +7,8 @@ import com.neusoft.cloudbrain.department.entity.Department;
 import com.neusoft.cloudbrain.department.exception.DepartmentErrorCode;
 import com.neusoft.cloudbrain.department.repository.DepartmentRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,18 +37,20 @@ public class DepartmentService {
     private final DepartmentRepository departmentRepository;
 
     /**
-     * 获取科室树形结构
+     * 获取科室树形结构（缓存）
      */
     @Transactional(readOnly = true)
+    @Cacheable(value = "departmentTree")
     public List<DepartmentResponse> getDepartmentTree() {
         List<Department> allDepartments = departmentRepository.findAll();
         return buildTree(allDepartments);
     }
 
     /**
-     * 获取科室扁平列表
+     * 获取科室扁平列表（缓存）
      */
     @Transactional(readOnly = true)
+    @Cacheable(value = "departmentList")
     public List<DepartmentResponse> getDepartmentList() {
         return departmentRepository.findAll().stream()
                 .map(this::toResponse)
@@ -67,6 +71,7 @@ public class DepartmentService {
      * 创建科室
      */
     @Transactional
+    @CacheEvict(value = {"departmentTree", "departmentList"}, allEntries = true)
     public DepartmentResponse createDepartment(DepartmentCreateRequest request) {
         // 检查编码唯一性
         if (departmentRepository.existsByCode(request.code())) {
@@ -100,6 +105,7 @@ public class DepartmentService {
      * 更新科室
      */
     @Transactional
+    @CacheEvict(value = {"departmentTree", "departmentList"}, allEntries = true)
     public DepartmentResponse updateDepartment(Long id, DepartmentUpdateRequest request) {
         Department department = departmentRepository.findById(id)
                 .orElseThrow(DepartmentErrorCode.DEPARTMENT_NOT_FOUND::toException);

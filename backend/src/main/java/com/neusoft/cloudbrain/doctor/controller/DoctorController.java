@@ -3,6 +3,7 @@ package com.neusoft.cloudbrain.doctor.controller;
 import com.neusoft.cloudbrain.auth.dto.AuthPrincipal;
 import com.neusoft.cloudbrain.auth.security.SecurityUtils;
 import com.neusoft.cloudbrain.common.api.ApiResponse;
+import com.neusoft.cloudbrain.common.api.PageResponse;
 import com.neusoft.cloudbrain.common.exception.BusinessException;
 import com.neusoft.cloudbrain.doctor.dto.DoctorCreateRequest;
 import com.neusoft.cloudbrain.doctor.dto.DoctorResponse;
@@ -10,6 +11,7 @@ import com.neusoft.cloudbrain.doctor.dto.DoctorUpdateRequest;
 import com.neusoft.cloudbrain.doctor.service.DoctorService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
 import org.springframework.data.domain.Page;
 import org.springframework.web.bind.annotation.*;
 
@@ -38,18 +40,19 @@ public class DoctorController {
      * 获取医生列表（分页）
      */
     @GetMapping
-    public ApiResponse<Page<DoctorResponse>> list(
+    public ApiResponse<PageResponse<DoctorResponse>> list(
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(defaultValue = "20") @Max(100) int pageSize,
             @RequestParam(required = false) String name,
             HttpServletRequest httpRequest) {
+        int cappedSize = Math.min(pageSize, 100);
         Page<DoctorResponse> result;
         if (name != null && !name.isBlank()) {
-            result = doctorService.searchByName(name, page, pageSize);
+            result = doctorService.searchByName(name, page, cappedSize);
         } else {
-            result = doctorService.getDoctorList(page, pageSize);
+            result = doctorService.getDoctorList(page, cappedSize);
         }
-        return ApiResponse.success(result, (String) httpRequest.getAttribute("traceId"));
+        return ApiResponse.success(PageResponse.from(result), (String) httpRequest.getAttribute("traceId"));
     }
 
     /**
