@@ -128,6 +128,7 @@ public class MockAIProvider implements AIProvider {
         return switch (capability) {
             case "triage" -> buildTriageResponse(input, true);
             case "diagnosis" -> buildHighRiskDiagnosisResponse();
+            case "medical_record" -> buildHighRiskMedicalRecordResponse(input);
             case "prescription_review" -> buildHighRiskPrescriptionResponse();
             default -> buildNormalResponse(capability, input);
         };
@@ -140,7 +141,7 @@ public class MockAIProvider implements AIProvider {
             case "diagnosis" -> """
                     {"possibleDiagnoses":[],"evidence":[],"missingInformation":["信息不足，无法生成候选诊断"],"riskFactors":[],"suggestedExaminations":[],"disclaimer":"本结果由 AI 辅助生成，仅供医生参考，不能作为正式诊断依据"}""";
             case "medical_record" -> """
-                    {"chiefComplaint":"","presentIllness":"","pastHistory":"","physicalExamination":"","preliminaryDiagnosis":"","treatmentSuggestion":"","disclaimer":"本病历草稿由 AI 辅助生成，仅供医生参考，需医生确认后形成正式病历"}""";
+                    {"chiefComplaint":"","presentIllness":"","pastHistory":"","physicalExamination":"","preliminaryDiagnosis":"","treatmentSuggestion":""}""";
             case "prescription_review" -> """
                     {"riskLevel":"SAFE","allergyWarnings":[],"interactionWarnings":[],"dosageWarnings":[],"contraindicationWarnings":[],"suggestions":"处方用药基本合理，请医生结合临床最终确认","disclaimer":"本审核由 AI 辅助生成，仅供医生参考，不能替代医生专业判断"}""";
             case "result_interpretation" -> """
@@ -270,9 +271,17 @@ public class MockAIProvider implements AIProvider {
     // ============================================================
 
     private String buildMedicalRecordResponse(String input) {
-        // 病历生成回填输入信息，不编造事实
+        // 病历生成回填输入信息，不编造事实；缺失字段留空或标记
         return """
-                {"chiefComplaint":"基于问诊内容整理的主诉","presentIllness":"基于问诊内容整理的现病史","pastHistory":"基于问诊内容整理的既往史","physicalExamination":"基于问诊内容整理的体格检查","preliminaryDiagnosis":"待进一步明确","treatmentSuggestion":"建议对症治疗，根据检查结果调整方案","disclaimer":"本病历草稿由 AI 辅助生成，仅供医生参考，需医生确认后形成正式病历"}""";
+                {"chiefComplaint":"基于问诊内容整理的主诉","presentIllness":"基于问诊内容整理的现病史","pastHistory":"不详","physicalExamination":"待查","preliminaryDiagnosis":"待进一步明确","treatmentSuggestion":"建议对症治疗，根据检查结果调整方案"}""";
+    }
+
+    /**
+     * 高风险病历场景：症状严重（如胸痛、呼吸困难），提示紧急处理但不自动确诊。
+     */
+    private String buildHighRiskMedicalRecordResponse(String input) {
+        return """
+                {"chiefComplaint":"胸痛伴大汗，持续不缓解","presentIllness":"患者突发胸痛，呈压榨样，伴大汗及放射痛，症状持续不缓解，疑似急性心血管事件","pastHistory":"不详","physicalExamination":"待查（建议立即测量血压、心电图）","preliminaryDiagnosis":"胸痛待查，警惕急性心肌梗死","treatmentSuggestion":"建议立即启动急诊流程，完善心电图、心肌酶谱、肌钙蛋白检查，暂禁食水，监护生命体征"}""";
     }
 
     // ============================================================

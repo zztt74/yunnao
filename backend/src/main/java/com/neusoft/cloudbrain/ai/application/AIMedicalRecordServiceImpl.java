@@ -16,16 +16,21 @@ import org.springframework.stereotype.Service;
 /**
  * AI 病历生成服务实现
  *
- * 重构后（任务 STAGE-AI-1）：
+ * 重构后（任务 STAGE-AI-3a）：
  * - 通过 AIInvocationRecorder 统一调用 Provider（含重试和调用记录）
  * - 通过 JsonSchemaParser 解析和校验 AI 响应
  * - 通过 PromptManager 获取 system prompt 和版本
  * - 关键词 Mock 逻辑已下沉到 MockAIProvider
  *
- * 规则（来自 32_AI能力契约规范.md 第3节）：
+ * 输出 Schema（来自 13_AI能力集成AI任务书.md 第3.3节，6 个字段）：
+ * chiefComplaint、presentIllness、pastHistory、physicalExamination、
+ * preliminaryDiagnosis、treatmentSuggestion
+ *
+ * 规则：
  * - AI 只能生成草稿
  * - 不得编造输入中不存在的事实
- * - 正式病历必须医生确认
+ * - 缺失信息留空或明确标记
+ * - 正式病历必须医生确认，不得自动确认
  */
 @Slf4j
 @Service
@@ -74,20 +79,22 @@ public class AIMedicalRecordServiceImpl implements AIMedicalRecordService {
 
     /**
      * 解析病历生成响应（由 AIInvocationRecorder 调用）
+     *
+     * 校验 6 个必填字段均存在（值可为空字符串或标记，由 Prompt 约束 AI 不编造）。
      */
     private MedicalRecordAIResult parseMedicalRecordResponse(String content) {
         JsonNode node = jsonSchemaParser.parse(content);
         jsonSchemaParser.validateRequired(node,
-                "chiefComplaint", "presentIllness", "disclaimer");
+                "chiefComplaint", "presentIllness", "pastHistory",
+                "physicalExamination", "preliminaryDiagnosis", "treatmentSuggestion");
 
         return new MedicalRecordAIResult(
                 node.get("chiefComplaint").asText(),
                 node.get("presentIllness").asText(),
-                node.has("pastHistory") ? node.get("pastHistory").asText() : "不详",
-                node.has("physicalExamination") ? node.get("physicalExamination").asText() : "待查",
-                node.has("preliminaryDiagnosis") ? node.get("preliminaryDiagnosis").asText() : "待进一步明确",
-                node.has("treatmentSuggestion") ? node.get("treatmentSuggestion").asText() : "",
-                node.get("disclaimer").asText());
+                node.get("pastHistory").asText(),
+                node.get("physicalExamination").asText(),
+                node.get("preliminaryDiagnosis").asText(),
+                node.get("treatmentSuggestion").asText());
     }
 
     private String safe(String value) {
