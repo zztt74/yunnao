@@ -180,14 +180,17 @@ public class AIInvocationRecorder {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public AIInvocation startInvocation(InvocationSpec spec) {
+        LocalDateTime now = LocalDateTime.now();
         AIInvocation invocation = AIInvocation.builder()
                 .capability(spec.capability())
                 .businessType(spec.businessType())
                 .businessId(spec.businessId())
                 .status("PENDING")
                 .operatorId(spec.operatorId())
-                .startedAt(LocalDateTime.now())
+                .startedAt(now)
                 .attemptCount(0)
+                .createdAt(now)
+                .updatedAt(now)
                 .build();
         return invocationRepository.save(invocation);
     }
@@ -231,6 +234,7 @@ public class AIInvocationRecorder {
     public void updateAttemptCount(Long invocationId, int attemptCount) {
         invocationRepository.findById(invocationId).ifPresent(inv -> {
             inv.setAttemptCount(attemptCount);
+            inv.setUpdatedAt(LocalDateTime.now());
             invocationRepository.save(inv);
         });
     }
@@ -244,6 +248,7 @@ public class AIInvocationRecorder {
             inv.setErrorMessage(truncate(errorMessage, ERROR_MESSAGE_MAX));
             inv.setDurationMs(durationMs);
             inv.setFinishedAt(LocalDateTime.now());
+            inv.setUpdatedAt(LocalDateTime.now());
             invocationRepository.save(inv);
         });
     }
