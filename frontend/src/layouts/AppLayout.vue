@@ -22,12 +22,16 @@ const patientMenus: MenuItem[] = [
   { path: '/patient/examinations', label: '检查检验' },
   { path: '/patient/prescriptions', label: '我的处方' },
   { path: '/patient/profile', label: '个人信息' },
+  { path: '/patient/change-password', label: '修改密码' },
 ]
 
 const doctorMenus: MenuItem[] = [
   { path: '/doctor', label: '工作台' },
   { path: '/doctor/schedules', label: '我的排班' },
   { path: '/doctor/queue', label: '待诊队列' },
+  { path: '/doctor/encounters', label: '接诊历史' },
+  { path: '/doctor/profile', label: '个人信息' },
+  { path: '/doctor/change-password', label: '修改密码' },
 ]
 
 const adminMenus: MenuItem[] = [
@@ -236,7 +240,7 @@ function isActive(path: string): boolean {
 
 .sidebar-menu {
   flex: 1;
-  padding: 8px 0;
+  padding: 0;
   overflow-y: auto;
   overflow-x: hidden;
   width: 220px;

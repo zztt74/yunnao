@@ -17,6 +17,19 @@ import PatientPrescriptionsView from '@/views/patient/PatientPrescriptionsView.v
 import PatientTriageHistoryView from '@/views/patient/PatientTriageHistoryView.vue'
 import PatientTimelineView from '@/views/patient/PatientTimelineView.vue'
 import ChangePasswordView from '@/views/patient/ChangePasswordView.vue'
+import DoctorHomeView from '@/views/doctor/DoctorHomeView.vue'
+import DoctorSchedulesView from '@/views/doctor/DoctorSchedulesView.vue'
+import DoctorQueueView from '@/views/doctor/DoctorQueueView.vue'
+import DoctorEncounterHistoryView from '@/views/doctor/DoctorEncounterHistoryView.vue'
+import DoctorPatientDetailView from '@/views/doctor/DoctorPatientDetailView.vue'
+import DoctorProfileView from '@/views/doctor/DoctorProfileView.vue'
+import DoctorChangePasswordView from '@/views/doctor/DoctorChangePasswordView.vue'
+import DoctorEncounterView from '@/views/doctor/DoctorEncounterView.vue'
+import DoctorEncounterOverview from '@/views/doctor/DoctorEncounterOverview.vue'
+import DoctorDiagnosisView from '@/views/doctor/DoctorDiagnosisView.vue'
+import DoctorExaminationOrderView from '@/views/doctor/DoctorExaminationOrderView.vue'
+import DoctorMedicalRecordView from '@/views/doctor/DoctorMedicalRecordView.vue'
+import DoctorPrescriptionView from '@/views/doctor/DoctorPrescriptionView.vue'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -110,13 +123,82 @@ const router = createRouter({
     },
     {
       path: '/doctor',
-      name: 'doctor-boundary',
-      component: RoleBoundaryView,
+      name: 'doctor-home',
+      component: DoctorHomeView,
       meta: { requiresAuth: true, roles: ['DOCTOR'], title: '医生端工作台' },
-      props: {
-        role: '医生端',
-        ownership: 'frontend/src/modules/doctor',
-      },
+    },
+    {
+      path: '/doctor/schedules',
+      name: 'doctor-schedules',
+      component: DoctorSchedulesView,
+      meta: { requiresAuth: true, roles: ['DOCTOR'], title: '我的排班' },
+    },
+    {
+      path: '/doctor/queue',
+      name: 'doctor-queue',
+      component: DoctorQueueView,
+      meta: { requiresAuth: true, roles: ['DOCTOR'], title: '待诊队列' },
+    },
+    {
+      path: '/doctor/encounters',
+      name: 'doctor-encounters',
+      component: DoctorEncounterHistoryView,
+      meta: { requiresAuth: true, roles: ['DOCTOR'], title: '我的接诊历史' },
+    },
+    {
+      path: '/doctor/patient/:patientId',
+      name: 'doctor-patient-detail',
+      component: DoctorPatientDetailView,
+      meta: { requiresAuth: true, roles: ['DOCTOR'], title: '患者详情' },
+    },
+    {
+      path: '/doctor/profile',
+      name: 'doctor-profile',
+      component: DoctorProfileView,
+      meta: { requiresAuth: true, roles: ['DOCTOR'], title: '个人信息' },
+    },
+    {
+      path: '/doctor/change-password',
+      name: 'doctor-change-password',
+      component: DoctorChangePasswordView,
+      meta: { requiresAuth: true, roles: ['DOCTOR'], title: '修改密码' },
+    },
+    {
+      path: '/doctor/encounter/:id',
+      component: DoctorEncounterView,
+      meta: { requiresAuth: true, roles: ['DOCTOR'], title: '接诊工作台' },
+      children: [
+        {
+          path: '',
+          name: 'doctor-encounter-overview',
+          component: DoctorEncounterOverview,
+          meta: { requiresAuth: true, roles: ['DOCTOR'], title: '接诊概览' },
+        },
+        {
+          path: 'diagnosis',
+          name: 'doctor-encounter-diagnosis',
+          component: DoctorDiagnosisView,
+          meta: { requiresAuth: true, roles: ['DOCTOR'], title: 'AI 辅助诊断' },
+        },
+        {
+          path: 'examinations',
+          name: 'doctor-encounter-examinations',
+          component: DoctorExaminationOrderView,
+          meta: { requiresAuth: true, roles: ['DOCTOR'], title: '检查检验开立' },
+        },
+        {
+          path: 'medical-record',
+          name: 'doctor-encounter-medical-record',
+          component: DoctorMedicalRecordView,
+          meta: { requiresAuth: true, roles: ['DOCTOR'], title: '病历生成与编辑' },
+        },
+        {
+          path: 'prescription',
+          name: 'doctor-encounter-prescription',
+          component: DoctorPrescriptionView,
+          meta: { requiresAuth: true, roles: ['DOCTOR'], title: '处方开立与审核' },
+        },
+      ],
     },
     {
       path: '/admin',

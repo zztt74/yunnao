@@ -53,3 +53,13 @@ export interface ExaminationResponse {
   createdAt: string
   updatedAt: string
 }
+
+// ===== 医生端：检查检验开立 =====
+
+// 医生开立检查检验申请
+export interface ExaminationCreateRequest {
+  encounterId: number
+  type: ExaminationType
+  itemName: string
+  purpose?: string
+}

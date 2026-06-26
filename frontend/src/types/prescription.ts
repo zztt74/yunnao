@@ -59,3 +59,27 @@ export interface PrescriptionResponse {
   createdAt: string
   updatedAt: string
 }
+
+// ===== 医生端：处方开立与审核 =====
+
+// 处方药品明细录入项
+export interface PrescriptionItemRequest {
+  drugId: number
+  drugCode: string
+  drugName: string
+  strength: string
+  unit: string
+  dosage: string
+  frequency: string
+  usage: string
+  duration: string
+  remark?: string
+}
+
+// 医生创建/更新处方草稿请求
+export interface PrescriptionSaveRequest {
+  encounterId: number
+  diagnosis: string
+  items: PrescriptionItemRequest[]
+  remark?: string
+}
