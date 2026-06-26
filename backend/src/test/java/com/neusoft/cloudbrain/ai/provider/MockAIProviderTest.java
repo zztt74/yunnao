@@ -72,8 +72,9 @@ class MockAIProviderTest {
         AIProviderResponse response = provider.generate(
                 new AIProviderRequest("triage", "MOCK_EMPTY"));
 
-        assertThat(response.content()).contains("\"departmentCode\":\"\"");
         assertThat(response.content()).contains("\"symptomKeywords\":[]");
+        assertThat(response.content()).contains("\"priority\":\"LOW\"");
+        assertThat(response.content()).contains("信息不足");
     }
 
     @Test

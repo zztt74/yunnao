@@ -136,7 +136,7 @@ public class MockAIProvider implements AIProvider {
     private String buildEmptyResponse(String capability) {
         return switch (capability) {
             case "triage" -> """
-                    {"departmentCode":"","priority":"","symptomKeywords":[],"reason":"","safetyNotice":"本结果由 AI 辅助生成，仅供参考，最终诊断请由医生确认","emergencySuggested":false}""";
+                    {"departmentCode":"DEPT_INTERNAL","priority":"LOW","symptomKeywords":[],"reason":"信息不足，无法精确分诊，建议先就诊内科进行初步检查","safetyNotice":"本结果由 AI 辅助生成，仅供辅助参考，最终诊断请由医生确认","emergencySuggested":false}""";
             case "diagnosis" -> """
                     {"possibleDiagnoses":[],"evidence":[],"missingInformation":["信息不足，无法生成候选诊断"],"riskFactors":[],"suggestedExaminations":[],"disclaimer":"本结果由 AI 辅助生成，仅供医生参考，不能作为正式诊断依据"}""";
             case "medical_record" -> """

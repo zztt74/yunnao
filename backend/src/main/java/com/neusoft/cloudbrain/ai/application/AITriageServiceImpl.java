@@ -64,7 +64,8 @@ public class AITriageServiceImpl implements AITriageService {
         } catch (AIProviderException e) {
             throw new BusinessException("AI_TRIAGE_FAILED", "AI 分诊服务暂时不可用，请转人工选择科室", 504);
         } catch (AIInvalidResponseException e) {
-            throw new BusinessException("AI_TRIAGE_FAILED", "AI 分诊响应异常: " + e.getMessage(), 500);
+            throw new BusinessException(AIInvalidResponseException.CODE,
+                    "AI 分诊响应异常: " + e.getMessage(), 500);
         }
     }
 
