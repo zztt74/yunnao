@@ -13,9 +13,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.function.Function;
 
@@ -194,5 +196,52 @@ class AIInvocationRecorderTest {
         // updateAttemptCount 调用 findById + save
         verify(invocationRepository, atLeast(1)).findById(1L);
         verify(invocationRepository, atLeast(2)).save(any(AIInvocation.class));
+    }
+
+    @Test
+    @DisplayName("startInvocation 填充 createdAt 和 updatedAt（避免 NOT NULL 约束失败）")
+    void startInvocation_setsCreatedAtAndUpdatedAt() {
+        when(invocationRepository.save(any(AIInvocation.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        recorder.startInvocation(buildSpec());
+
+        ArgumentCaptor<AIInvocation> captor = ArgumentCaptor.forClass(AIInvocation.class);
+        verify(invocationRepository).save(captor.capture());
+        AIInvocation saved = captor.getValue();
+        assertThat(saved.getCreatedAt()).isNotNull();
+        assertThat(saved.getUpdatedAt()).isNotNull();
+        assertThat(saved.getStartedAt()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("成功调用后 finishInvocation 与 updateAttemptCount 更新 updatedAt")
+    void finishInvocation_updatesUpdatedAt() {
+        LocalDateTime initial = LocalDateTime.now().minusMinutes(5);
+        AIInvocation invocation = AIInvocation.builder()
+                .id(1L)
+                .capability("triage")
+                .status("PENDING")
+                .startedAt(initial)
+                .createdAt(initial)
+                .updatedAt(initial)
+                .build();
+        when(invocationRepository.save(any(AIInvocation.class))).thenReturn(invocation);
+        when(invocationRepository.findById(1L)).thenReturn(Optional.of(invocation));
+        when(aiProvider.generate(any(AIProviderRequest.class)))
+                .thenReturn(new AIProviderResponse("{\"result\":\"ok\"}", true, "mock"));
+
+        recorder.invoke(buildSpec(), content -> content);
+
+        // startInvocation + updateAttemptCount + finishInvocation 共 3 次 save
+        ArgumentCaptor<AIInvocation> captor = ArgumentCaptor.forClass(AIInvocation.class);
+        verify(invocationRepository, times(3)).save(captor.capture());
+        // 第一次 save（startInvocation）已设置 createdAt/updatedAt
+        AIInvocation started = captor.getAllValues().get(0);
+        assertThat(started.getCreatedAt()).isNotNull();
+        assertThat(started.getUpdatedAt()).isNotNull();
+        // 后续 save（updateAttemptCount / finishInvocation）的 updatedAt 不为空
+        AIInvocation finished = captor.getAllValues().get(2);
+        assertThat(finished.getUpdatedAt()).isNotNull();
     }
 }
