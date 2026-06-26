@@ -3,7 +3,6 @@ import { useAuthStore } from '@/stores/auth'
 import type { UserRole } from '@/types/auth'
 
 import NotFoundView from '@/views/NotFoundView.vue'
-import RoleBoundaryView from '@/views/RoleBoundaryView.vue'
 import StageZeroHomeView from '@/views/StageZeroHomeView.vue'
 import RegisterView from '@/views/RegisterView.vue'
 import ForbiddenView from '@/views/ForbiddenView.vue'
@@ -30,6 +29,19 @@ import DoctorDiagnosisView from '@/views/doctor/DoctorDiagnosisView.vue'
 import DoctorExaminationOrderView from '@/views/doctor/DoctorExaminationOrderView.vue'
 import DoctorMedicalRecordView from '@/views/doctor/DoctorMedicalRecordView.vue'
 import DoctorPrescriptionView from '@/views/doctor/DoctorPrescriptionView.vue'
+import AdminHomeView from '@/views/admin/AdminHomeView.vue'
+import AdminUsersView from '@/views/admin/AdminUsersView.vue'
+import AdminDepartmentsView from '@/views/admin/AdminDepartmentsView.vue'
+import AdminDoctorsView from '@/views/admin/AdminDoctorsView.vue'
+import AdminPatientsView from '@/views/admin/AdminPatientsView.vue'
+import AdminSchedulesView from '@/views/admin/AdminSchedulesView.vue'
+import AdminAppointmentsView from '@/views/admin/AdminAppointmentsView.vue'
+import AdminTriageView from '@/views/admin/AdminTriageView.vue'
+import AdminDevicesView from '@/views/admin/AdminDevicesView.vue'
+import AdminStatisticsView from '@/views/admin/AdminStatisticsView.vue'
+import AdminLoginLogsView from '@/views/admin/AdminLoginLogsView.vue'
+import AdminOperationLogsView from '@/views/admin/AdminOperationLogsView.vue'
+import AdminAiLogsView from '@/views/admin/AdminAiLogsView.vue'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -202,13 +214,81 @@ const router = createRouter({
     },
     {
       path: '/admin',
-      name: 'admin-boundary',
-      component: RoleBoundaryView,
+      name: 'admin-home',
+      component: AdminHomeView,
       meta: { requiresAuth: true, roles: ['ADMIN'], title: '管理端首页' },
-      props: {
-        role: '管理端',
-        ownership: 'frontend/src/modules/admin',
-      },
+    },
+    {
+      path: '/admin/users',
+      name: 'admin-users',
+      component: AdminUsersView,
+      meta: { requiresAuth: true, roles: ['ADMIN'], title: '用户管理' },
+    },
+    {
+      path: '/admin/departments',
+      name: 'admin-departments',
+      component: AdminDepartmentsView,
+      meta: { requiresAuth: true, roles: ['ADMIN'], title: '科室管理' },
+    },
+    {
+      path: '/admin/doctors',
+      name: 'admin-doctors',
+      component: AdminDoctorsView,
+      meta: { requiresAuth: true, roles: ['ADMIN'], title: '医生管理' },
+    },
+    {
+      path: '/admin/patients',
+      name: 'admin-patients',
+      component: AdminPatientsView,
+      meta: { requiresAuth: true, roles: ['ADMIN'], title: '患者查询' },
+    },
+    {
+      path: '/admin/schedules',
+      name: 'admin-schedules',
+      component: AdminSchedulesView,
+      meta: { requiresAuth: true, roles: ['ADMIN'], title: '排班管理' },
+    },
+    {
+      path: '/admin/appointments',
+      name: 'admin-appointments',
+      component: AdminAppointmentsView,
+      meta: { requiresAuth: true, roles: ['ADMIN'], title: '挂号管理' },
+    },
+    {
+      path: '/admin/triage',
+      name: 'admin-triage',
+      component: AdminTriageView,
+      meta: { requiresAuth: true, roles: ['ADMIN'], title: '分诊记录' },
+    },
+    {
+      path: '/admin/devices',
+      name: 'admin-devices',
+      component: AdminDevicesView,
+      meta: { requiresAuth: true, roles: ['ADMIN'], title: '设备管理' },
+    },
+    {
+      path: '/admin/statistics/dashboard',
+      name: 'admin-statistics',
+      component: AdminStatisticsView,
+      meta: { requiresAuth: true, roles: ['ADMIN'], title: '统计驾驶舱' },
+    },
+    {
+      path: '/admin/logs/login',
+      name: 'admin-logs-login',
+      component: AdminLoginLogsView,
+      meta: { requiresAuth: true, roles: ['ADMIN'], title: '登录日志' },
+    },
+    {
+      path: '/admin/logs/operation',
+      name: 'admin-logs-operation',
+      component: AdminOperationLogsView,
+      meta: { requiresAuth: true, roles: ['ADMIN'], title: '操作日志' },
+    },
+    {
+      path: '/admin/logs/ai-invocation',
+      name: 'admin-logs-ai',
+      component: AdminAiLogsView,
+      meta: { requiresAuth: true, roles: ['ADMIN'], title: 'AI 调用记录' },
     },
     {
       path: '/:pathMatch(.*)*',
