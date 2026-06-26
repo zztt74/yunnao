@@ -175,19 +175,24 @@ class MockAIProviderTest {
     }
 
     @Test
-    @DisplayName("处方审核响应包含所有必填字段")
+    @DisplayName("处方审核响应包含所有必填字段（6 字段，不含 disclaimer）")
     void prescriptionReviewResponse_containsAllFields() {
         AIProviderResponse response = provider.generate(
                 new AIProviderRequest("prescription_review", "处方审核: 阿莫西林"));
 
         String content = response.content();
+        // 13_AI能力集成AI任务书.md 第3.4节：处方审核 Schema 为 6 字段
         assertThat(content).contains("riskLevel");
         assertThat(content).contains("allergyWarnings");
         assertThat(content).contains("interactionWarnings");
         assertThat(content).contains("dosageWarnings");
-        assertThat(content).contains("contraindicationWarnings");
-        assertThat(content).contains("suggestions");
-        assertThat(content).contains("disclaimer");
+        assertThat(content).contains("recommendations");
+        assertThat(content).contains("summary");
+        // 安全声明由 PrescriptionReviewAIResult.disclaimer() 固定方法提供，不在 AI 输出 JSON 中
+        assertThat(content).doesNotContain("disclaimer");
+        // 旧字段已移除
+        assertThat(content).doesNotContain("contraindicationWarnings");
+        assertThat(content).doesNotContain("\"suggestions\"");
     }
 
     @Test
@@ -209,9 +214,10 @@ class MockAIProviderTest {
     @Test
     @DisplayName("所有响应包含安全声明")
     void allResponses_containSafetyNotice() {
-        // 病历生成（medical_record）的 Schema 不含 disclaimer（13_AI能力集成AI任务书.md 第3.3节），
-        // 其安全声明由 MedicalRecordAIResult.disclaimer() 固定方法提供，不在此校验范围内。
-        String[] capabilities = {"triage", "diagnosis", "prescription_review", "result_interpretation"};
+        // 病历生成（medical_record）和处方审核（prescription_review）的 Schema 不含 disclaimer
+        // （13_AI能力集成AI任务书.md 第3.3、3.4节），
+        // 其安全声明由对应 DTO 的 disclaimer() 固定方法提供，不在此校验范围内。
+        String[] capabilities = {"triage", "diagnosis", "result_interpretation"};
         for (String cap : capabilities) {
             AIProviderResponse response = provider.generate(
                     new AIProviderRequest(cap, "测试输入"));

@@ -144,7 +144,7 @@ public class MockAIProvider implements AIProvider {
             case "medical_record" -> """
                     {"chiefComplaint":"","presentIllness":"","pastHistory":"","physicalExamination":"","preliminaryDiagnosis":"","treatmentSuggestion":""}""";
             case "prescription_review" -> """
-                    {"riskLevel":"SAFE","allergyWarnings":[],"interactionWarnings":[],"dosageWarnings":[],"contraindicationWarnings":[],"suggestions":"处方用药基本合理，请医生结合临床最终确认","disclaimer":"本审核由 AI 辅助生成，仅供医生参考，不能替代医生专业判断"}""";
+                    {"riskLevel":"SAFE","allergyWarnings":[],"interactionWarnings":[],"dosageWarnings":[],"recommendations":"处方用药基本合理，请医生结合临床最终确认","summary":"处方审核通过，未发现明显风险"}""";
             case "result_interpretation" -> """
                     {"abnormalItems":[],"plainLanguageExplanation":"暂无明显异常","possibleAttentionPoints":[],"followUpSuggestion":"建议保持健康生活方式，按需复查","disclaimer":"本解读由 AI 辅助生成，仅供医生参考，不能替代医生专业判断"}""";
             default -> "{}";
@@ -291,12 +291,12 @@ public class MockAIProvider implements AIProvider {
 
     private String buildPrescriptionReviewResponse(String input) {
         return """
-                {"riskLevel":"SAFE","allergyWarnings":[],"interactionWarnings":[],"dosageWarnings":[],"contraindicationWarnings":[],"suggestions":"处方用药基本合理，请医生结合临床最终确认","disclaimer":"本审核由 AI 辅助生成，仅供医生参考，不能替代医生专业判断"}""";
+                {"riskLevel":"SAFE","allergyWarnings":[],"interactionWarnings":[],"dosageWarnings":[],"recommendations":"处方用药基本合理，请医生结合临床最终确认","summary":"处方审核通过，未发现明显风险"}""";
     }
 
     private String buildHighRiskPrescriptionResponse() {
         return """
-                {"riskLevel":"HIGH","allergyWarnings":["患者对青霉素过敏，处方包含青霉素类药物"],"interactionWarnings":["两种药物存在相互作用"],"dosageWarnings":[],"contraindicationWarnings":["存在用药禁忌"],"suggestions":"存在过敏禁忌和药物相互作用，建议更换药品并重新评估用药方案。风险等级：HIGH。","disclaimer":"本审核由 AI 辅助生成，仅供医生参考，不能替代医生专业判断"}""";
+                {"riskLevel":"CONTRAINDICATED","allergyWarnings":["患者对青霉素过敏，处方包含青霉素类药物"],"interactionWarnings":["两种药物存在相互作用"],"dosageWarnings":[],"recommendations":"存在过敏禁忌和药物相互作用，建议更换药品并重新评估用药方案。风险等级：CONTRAINDICATED。","summary":"存在过敏禁忌和药物相互作用，风险等级 CONTRAINDICATED，禁止使用"}""";
     }
 
     // ============================================================
