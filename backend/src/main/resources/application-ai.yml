@@ -1,7 +1,37 @@
+# AI 能力集成配置
+# 对应 AIProperties（app.ai 前缀）
+# 规则（来自 13_AI能力集成AI任务书.md 第4节、32_AI能力契约规范.md 第4节）：
+# - mode 决定使用 Mock 还是真实 Provider
+# - timeout-ms 为单次 Provider 请求超时
+# - max-retries 为重试次数（仅对超时/5xx）
+# - 不配置真实 AI Key 时默认 Mock
 app:
   ai:
+    # AI 模式：MOCK 或 HTTP
     mode: ${AI_MODE:MOCK}
-    api-url: ${AI_API_URL:}
-    api-key: ${AI_API_KEY:}
+    # 单次 Provider 请求超时（毫秒）
     timeout-ms: ${AI_TIMEOUT_MS:8000}
+    # 最大重试次数（仅对超时/5xx），0 表示不重试
     max-retries: ${AI_MAX_RETRIES:1}
+    # 真实 HTTP Provider 配置
+    http:
+      # AI API 地址（OpenAI 兼容格式）
+      api-url: ${AI_API_URL:}
+      # AI API Key（来自环境变量，不写入日志或调用记录）
+      api-key: ${AI_API_KEY:}
+      # 模型标识
+      model: ${AI_MODEL:default}
+    # Mock Provider 场景触发关键词配置
+    mock:
+      # 触发超时场景的关键词
+      timeout-keyword: MOCK_TIMEOUT
+      # 触发非法 JSON 场景的关键词
+      invalid-json-keyword: MOCK_INVALID_JSON
+      # 触发不存在科室场景的关键词
+      not-exist-dept-keyword: MOCK_NOT_EXIST_DEPT
+      # 触发 Provider 异常场景的关键词
+      provider-error-keyword: MOCK_PROVIDER_ERROR
+      # 触发空结果场景的关键词
+      empty-keyword: MOCK_EMPTY
+      # 触发高风险结果场景的关键词
+      high-risk-keyword: MOCK_HIGH_RISK
