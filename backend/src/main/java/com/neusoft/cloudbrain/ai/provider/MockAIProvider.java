@@ -128,6 +128,7 @@ public class MockAIProvider implements AIProvider {
         return switch (capability) {
             case "triage" -> buildTriageResponse(input, true);
             case "diagnosis" -> buildHighRiskDiagnosisResponse();
+            case "result_interpretation" -> buildHighRiskResultInterpretationResponse(input);
             case "prescription_review" -> buildHighRiskPrescriptionResponse();
             default -> buildNormalResponse(capability, input);
         };
@@ -144,7 +145,7 @@ public class MockAIProvider implements AIProvider {
             case "prescription_review" -> """
                     {"riskLevel":"SAFE","allergyWarnings":[],"interactionWarnings":[],"dosageWarnings":[],"contraindicationWarnings":[],"suggestions":"处方用药基本合理，请医生结合临床最终确认","disclaimer":"本审核由 AI 辅助生成，仅供医生参考，不能替代医生专业判断"}""";
             case "result_interpretation" -> """
-                    {"abnormalItems":[],"plainLanguageExplanation":"暂无明显异常","followUpAdvice":"建议保持健康生活方式，按需复查","disclaimer":"本解读由 AI 辅助生成，仅供医生参考，不能替代医生专业判断"}""";
+                    {"abnormalItems":[],"plainLanguageExplanation":"暂无明显异常","possibleAttentionPoints":[],"followUpSuggestion":"建议保持健康生活方式，按需复查","disclaimer":"本解读由 AI 辅助生成，仅供医生参考，不能替代医生专业判断"}""";
             default -> "{}";
         };
     }
@@ -297,35 +298,52 @@ public class MockAIProvider implements AIProvider {
         String lower = input.toLowerCase();
         String abnormalItems;
         String explanation;
+        String attentionPoints;
         String followUp;
 
-        if (containsAny(lower, "偏高", "升高", "增高", "high", "elevated")) {
+        if (containsAny(lower, "危急", "critical")) {
+            // 危急值走高风险路径
+            return buildHighRiskResultInterpretationResponse(input);
+        } else if (containsAny(lower, "偏高", "升高", "增高", "high", "elevated")) {
             abnormalItems = "[\"指标偏高\"]";
             explanation = "结果偏高，超出参考范围，建议结合临床进一步评估。";
+            attentionPoints = "[\"关注偏高指标变化\",\"必要时复查\"]";
             followUp = "建议复查并关注相关指标变化，必要时就诊。";
         } else if (containsAny(lower, "偏低", "降低", "减低", "low", "decreased")) {
             abnormalItems = "[\"指标偏低\"]";
             explanation = "结果偏低，低于参考范围，建议结合临床进一步评估。";
+            attentionPoints = "[\"关注偏低指标变化\",\"必要时复查\"]";
             followUp = "建议复查并关注相关指标变化，必要时就诊。";
         } else if (containsAny(lower, "阳性", "positive")) {
             abnormalItems = "[\"指标阳性\"]";
             explanation = "结果为阳性，提示可能存在异常，需医生结合症状判断。";
+            attentionPoints = "[\"结合临床表现判断\",\"可能需进一步检查\"]";
             followUp = "建议尽快就诊，由医生结合临床表现进一步诊断。";
-        } else if (containsAny(lower, "危急", "critical")) {
-            abnormalItems = "[\"危急值\"]";
-            explanation = "结果为危急值，需立即就医处理。";
-            followUp = "建议立即就诊，及时处理危急值。";
         } else {
             abnormalItems = "[]";
             explanation = "结果在正常范围内，暂无明显异常。";
+            attentionPoints = "[]";
             followUp = "建议保持健康生活方式，按需复查。";
         }
 
         return String.format(
                 "{\"abnormalItems\":%s,\"plainLanguageExplanation\":\"%s\","
-                        + "\"followUpAdvice\":\"%s\","
+                        + "\"possibleAttentionPoints\":%s,"
+                        + "\"followUpSuggestion\":\"%s\","
                         + "\"disclaimer\":\"本解读由 AI 辅助生成，仅供医生参考，不能替代医生专业判断\"}",
-                abnormalItems, explanation, followUp);
+                abnormalItems, explanation, attentionPoints, followUp);
+    }
+
+    /**
+     * 高风险结果解读场景：危急值（如血糖危急值、血钾危急值），重点提示但不修改原始数值。
+     */
+    private String buildHighRiskResultInterpretationResponse(String input) {
+        return "{\"abnormalItems\":[\"危急值\"],"
+                + "\"plainLanguageExplanation\":\"结果为危急值，已超出安全范围，需立即就医处理，"
+                + "原始数值未被修改，请以报告为准。\","
+                + "\"possibleAttentionPoints\":[\"立即就诊\",\"持续监护生命体征\",\"复核原始数值\"],"
+                + "\"followUpSuggestion\":\"建议立即启动急诊流程，及时处理危急值，并复查确认。\","
+                + "\"disclaimer\":\"本解读由 AI 辅助生成，仅供医生参考，不能替代医生专业判断\"}";
     }
 
     // ============================================================

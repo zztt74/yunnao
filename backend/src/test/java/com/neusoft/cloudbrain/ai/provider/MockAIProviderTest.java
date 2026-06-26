@@ -189,7 +189,7 @@ class MockAIProviderTest {
     }
 
     @Test
-    @DisplayName("结果解读响应包含所有必填字段")
+    @DisplayName("结果解读响应包含所有必填字段（5 字段）")
     void resultInterpretationResponse_containsAllFields() {
         AIProviderResponse response = provider.generate(
                 new AIProviderRequest("result_interpretation", "血糖偏高"));
@@ -197,8 +197,11 @@ class MockAIProviderTest {
         String content = response.content();
         assertThat(content).contains("abnormalItems");
         assertThat(content).contains("plainLanguageExplanation");
-        assertThat(content).contains("followUpAdvice");
+        assertThat(content).contains("possibleAttentionPoints");
+        assertThat(content).contains("followUpSuggestion");
         assertThat(content).contains("disclaimer");
+        // 13_AI能力集成AI任务书.md 第3.5节：5 字段 Schema，不再使用 followUpAdvice
+        assertThat(content).doesNotContain("followUpAdvice");
     }
 
     @Test

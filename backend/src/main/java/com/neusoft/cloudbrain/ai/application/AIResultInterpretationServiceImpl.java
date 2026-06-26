@@ -18,15 +18,20 @@ import java.util.List;
 /**
  * AI 结果解读服务实现
  *
- * 重构后（任务 STAGE-AI-1）：
+ * 重构后（任务 STAGE-AI-3b）：
  * - 通过 AIInvocationRecorder 统一调用 Provider（含重试和调用记录）
  * - 通过 JsonSchemaParser 解析和校验 AI 响应
  * - 通过 PromptManager 获取 system prompt 和版本
  * - 关键词 Mock 逻辑已下沉到 MockAIProvider
  *
- * 规则（来自 32_AI能力契约规范.md 第3节）：
+ * 输出 Schema（来自 13_AI能力集成AI任务书.md 第3.5节，5 个字段）：
+ * abnormalItems、plainLanguageExplanation、possibleAttentionPoints、
+ * followUpSuggestion、disclaimer
+ *
+ * 规则：
  * - 不得修改原始检查数值
- * - 结果仅供辅助参考
+ * - 禁止编造输入中不存在的检查结果
+ * - 结果仅供辅助参考，医生必须审核确认
  */
 @Slf4j
 @Service
@@ -73,16 +78,20 @@ public class AIResultInterpretationServiceImpl implements AIResultInterpretation
 
     /**
      * 解析结果解读响应（由 AIInvocationRecorder 调用）
+     *
+     * 校验 3 个必填字符串字段（plainLanguageExplanation、followUpSuggestion、disclaimer）。
+     * 数组字段 abnormalItems 和 possibleAttentionPoints 缺失时返回空列表（空输入不编造）。
      */
     private ResultInterpretationAIResult parseResultInterpretationResponse(String content) {
         JsonNode node = jsonSchemaParser.parse(content);
         jsonSchemaParser.validateRequired(node,
-                "plainLanguageExplanation", "followUpAdvice", "disclaimer");
+                "plainLanguageExplanation", "followUpSuggestion", "disclaimer");
 
         return new ResultInterpretationAIResult(
                 jsonSchemaParser.parseStringArray(node, "abnormalItems"),
                 node.get("plainLanguageExplanation").asText(),
-                node.get("followUpAdvice").asText(),
+                jsonSchemaParser.parseStringArray(node, "possibleAttentionPoints"),
+                node.get("followUpSuggestion").asText(),
                 node.get("disclaimer").asText());
     }
 
