@@ -61,6 +61,9 @@ public class PrescriptionReview {
     @Column(columnDefinition = "TEXT")
     private String suggestions;
 
+    @Column(columnDefinition = "TEXT")
+    private String summary;
+
     @Column(name = "rule_check_summary", columnDefinition = "TEXT")
     private String ruleCheckSummary;
 

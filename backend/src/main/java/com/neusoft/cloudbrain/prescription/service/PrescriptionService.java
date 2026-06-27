@@ -394,6 +394,7 @@ public class PrescriptionService {
                     .dosageWarnings(toJson(aiResult.dosageWarnings()))
                     .contraindicationWarnings(toJson(aiResult.contraindicationWarnings()))
                     .suggestions(aiResult.suggestions())
+                    .summary(aiResult.summary())
                     .ruleCheckSummary(ruleDto.summary())
                     .reviewedAt(LocalDateTime.now())
                     .createdAt(now)
@@ -422,6 +423,7 @@ public class PrescriptionService {
                     .dosageWarnings(toJson(ruleResult.dosageWarnings()))
                     .contraindicationWarnings(toJson(ruleResult.contraindicationWarnings()))
                     .suggestions("AI 审核失败，请医生手工确认。" + e.getMessage())
+                    .summary("AI 审核失败：" + e.getMessage())
                     .ruleCheckSummary("确定性规则风险等级：" + ruleResult.riskLevel()
                             + "（AI 审核失败，风险等级以确定性规则为准）")
                     .reviewedAt(LocalDateTime.now())
@@ -743,6 +745,7 @@ public class PrescriptionService {
                 fromJson(review.getDosageWarnings()),
                 fromJson(review.getContraindicationWarnings()),
                 review.getSuggestions(),
+                review.getSummary(),
                 review.getRuleCheckSummary(),
                 review.getReviewedAt(),
                 review.getCreatedAt());
