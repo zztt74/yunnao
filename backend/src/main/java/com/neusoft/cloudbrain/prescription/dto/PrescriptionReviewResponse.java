@@ -21,6 +21,7 @@ public record PrescriptionReviewResponse(
         List<String> dosageWarnings,
         List<String> contraindicationWarnings,
         String suggestions,
+        String summary,
         String ruleCheckSummary,
         LocalDateTime reviewedAt,
         LocalDateTime createdAt) {
