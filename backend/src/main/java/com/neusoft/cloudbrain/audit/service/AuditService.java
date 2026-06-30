@@ -132,4 +132,21 @@ public class AuditService {
     public List<AIInvocationAttempt> getInvocationAttempts(Long invocationId) {
         return aiInvocationAttemptRepository.findByInvocationIdOrderByAttemptIndexAsc(invocationId);
     }
+
+    /**
+     * 管理端 AI 调用日志分页查询（B5）
+     *
+     * @param capability  能力筛选（可空）
+     * @param success     成功筛选（可空）：true=仅 SUCCESS，false=非 SUCCESS
+     * @param businessType 业务类型筛选（可空）
+     * @param startDate   开始时间（可空，闭区间）
+     * @param endDate     结束时间（可空，开区间）
+     */
+    @Transactional(readOnly = true)
+    public Page<AIInvocation> listInvocations(
+            String capability, Boolean success, String businessType,
+            LocalDateTime startDate, LocalDateTime endDate, Pageable pageable) {
+        return aiInvocationRepository.searchInvocations(
+                capability, businessType, success, startDate, endDate, pageable);
+    }
 }

@@ -55,12 +55,15 @@ public class StatisticsRepository {
                 "SELECT COUNT(*) FROM triage_record WHERE ai_priority = 'HIGH' AND created_at >= ?1 AND created_at < ?2",
                 dayStart, dayEnd);
 
+        Long totalPatients = countSingle("SELECT COUNT(*) FROM patient");
+
         return new DashboardSummary(
                 todayAppointments,
                 todayCompletedEncounters,
                 onDutyDoctors,
                 availableDevices,
-                highPriorityTriage);
+                highPriorityTriage,
+                totalPatients);
     }
 
     /**

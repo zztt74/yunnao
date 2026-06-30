@@ -11,6 +11,8 @@ import com.neusoft.cloudbrain.patient.exception.PatientErrorCode;
 import com.neusoft.cloudbrain.patient.repository.PatientProfileRepository;
 import com.neusoft.cloudbrain.patient.repository.PatientRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -224,6 +226,18 @@ public class PatientService {
         return patientRepository.findByPhone(phone).stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * 管理员患者分页查询（B7）
+     *
+     * 多条件分页：姓名模糊、手机号精确、状态。
+     * 权限由 Controller 层校验管理员。
+     */
+    @Transactional(readOnly = true)
+    public Page<PatientResponse> listPatients(String name, String phone, String status, Pageable pageable) {
+        return patientRepository.searchPatients(name, phone, status, pageable)
+                .map(this::toResponse);
     }
 
     /**

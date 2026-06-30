@@ -299,6 +299,21 @@ public class TriageService {
     }
 
     /**
+     * 管理员全量分诊记录查询（B4）
+     *
+     * 多条件分页：患者、优先级、映射科室、时间范围。
+     * 权限由 Controller 层校验管理员。
+     */
+    @Transactional(readOnly = true)
+    public Page<TriageRecordResponse> listTriageRecords(
+            Long patientId, String priority, Long departmentId,
+            LocalDateTime startDate, LocalDateTime endDate, Pageable pageable) {
+        return triageRecordRepository.searchTriageRecords(
+                patientId, priority, departmentId, startDate, endDate, pageable)
+                .map(this::toRecordResponse);
+    }
+
+    /**
      * 转换为分诊记录响应
      */
     private TriageRecordResponse toRecordResponse(TriageRecord record) {

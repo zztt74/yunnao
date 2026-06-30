@@ -192,4 +192,77 @@ class DoctorServiceTest {
         assertThat(response).isNotNull();
         verify(doctorRepository).save(any(Doctor.class));
     }
+
+    // ============================================================
+    // B1：医生本人资料更新
+    // ============================================================
+
+    @Test
+    @DisplayName("更新本人资料 - 存在档案时应更新专长/学历/年限/简介")
+    void updateMyProfile_shouldUpdateWhenDoctorExists() {
+        DoctorProfileUpdateRequest request = new DoctorProfileUpdateRequest(
+                "心血管与高血压", "博士", 12, "擅长冠心病介入治疗");
+        DoctorProfile existingProfile = DoctorProfile.builder()
+                .id(1L)
+                .doctorId(1L)
+                .education("硕士")
+                .experienceYears(10)
+                .introduction("原简介")
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build();
+
+        when(doctorRepository.findByUserId(10L)).thenReturn(Optional.of(testDoctor));
+        when(doctorRepository.save(any(Doctor.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(departmentRepository.findById(1L)).thenReturn(Optional.of(testDepartment));
+        when(doctorProfileRepository.findByDoctorId(1L)).thenReturn(Optional.of(existingProfile));
+        when(doctorProfileRepository.save(any(DoctorProfile.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        DoctorResponse response = doctorService.updateMyProfile(10L, request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.specialty()).isEqualTo("心血管与高血压");
+        assertThat(response.education()).isEqualTo("博士");
+        assertThat(response.experienceYears()).isEqualTo(12);
+        assertThat(response.introduction()).isEqualTo("擅长冠心病介入治疗");
+        // 不应触碰职称/科室/状态字段
+        assertThat(response.title()).isEqualTo("ATTENDING");
+        assertThat(response.departmentId()).isEqualTo(1L);
+        assertThat(response.status()).isEqualTo("ENABLED");
+        verify(doctorRepository).save(any(Doctor.class));
+        verify(doctorProfileRepository).save(any(DoctorProfile.class));
+    }
+
+    @Test
+    @DisplayName("更新本人资料 - 无档案时自动创建档案并更新")
+    void updateMyProfile_shouldCreateProfileWhenAbsent() {
+        DoctorProfileUpdateRequest request = new DoctorProfileUpdateRequest(
+                "内分泌", "本科", 5, "糖尿病管理");
+
+        when(doctorRepository.findByUserId(10L)).thenReturn(Optional.of(testDoctor));
+        when(doctorRepository.save(any(Doctor.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(departmentRepository.findById(1L)).thenReturn(Optional.of(testDepartment));
+        when(doctorProfileRepository.findByDoctorId(1L)).thenReturn(Optional.empty());
+        when(doctorProfileRepository.save(any(DoctorProfile.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        DoctorResponse response = doctorService.updateMyProfile(10L, request);
+
+        assertThat(response.education()).isEqualTo("本科");
+        assertThat(response.experienceYears()).isEqualTo(5);
+        verify(doctorProfileRepository).save(any(DoctorProfile.class));
+    }
+
+    @Test
+    @DisplayName("更新本人资料 - 非医生账号（user_id 未关联医生）抛权限错误 403")
+    void updateMyProfile_shouldThrowWhenNotDoctor() {
+        DoctorProfileUpdateRequest request = new DoctorProfileUpdateRequest(
+                "心血管", null, null, null);
+
+        when(doctorRepository.findByUserId(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> doctorService.updateMyProfile(999L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "DOCTOR_PERMISSION_DENIED")
+                .hasFieldOrPropertyWithValue("httpStatus", 403);
+    }
 }
