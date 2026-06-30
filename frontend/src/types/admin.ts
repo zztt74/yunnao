@@ -120,6 +120,7 @@ export interface DoctorCreateRequest {
 }
 
 export interface DoctorUpdateRequest {
+  name?: string
   title?: string
   departmentId?: number
   phone?: string

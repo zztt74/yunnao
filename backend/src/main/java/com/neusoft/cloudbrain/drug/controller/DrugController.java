@@ -20,7 +20,7 @@ import java.util.List;
  * - GET  /api/drugs/by-code/{code} 按编码查询
  * - GET  /api/drugs/by-category    按分类查询
  * - GET  /api/drugs/interaction    查询相互作用
- * - GET  /api/drugs/{code}/contraindications  查询禁忌
+ * - GET  /api/drugs/contraindications/{drugCode}  查询禁忌
  */
 @RestController
 @RequestMapping("/api/drugs")
@@ -107,13 +107,13 @@ public class DrugController {
     /**
      * 查询药品禁忌
      */
-    @GetMapping("/{code}/contraindications")
+    @GetMapping("/contraindications/{drugCode}")
     public ApiResponse<List<DrugResponse.ContraindicationResponse>> getContraindications(
-            @PathVariable String code,
+            @PathVariable String drugCode,
             @RequestParam(required = false) String conditionType,
             HttpServletRequest httpRequest) {
         List<DrugResponse.ContraindicationResponse> response =
-                drugService.getContraindications(code, conditionType);
+                drugService.getContraindications(drugCode, conditionType);
         return ApiResponse.success(response, (String) httpRequest.getAttribute("traceId"));
     }
 }

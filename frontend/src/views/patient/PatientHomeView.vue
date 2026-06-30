@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import { getPatientInfo } from '@/api/patient'
 import type { PatientResponse } from '@/types/patient'
 
@@ -11,13 +11,13 @@ const router = useRouter()
 const patientInfo = ref<PatientResponse | null>(null)
 
 const quickEntries = [
-  { path: '/patient/triage', title: 'AI 智能问诊', desc: '描述症状获取分诊建议', color: '#4facfe', icon: '🩺' },
-  { path: '/patient/appointments', title: '在线挂号', desc: '选择科室和医生挂号', color: '#67c23a', icon: '📅' },
-  { path: '/patient/timeline', title: '诊疗时间线', desc: '查看完整就诊记录', color: '#9b59b6', icon: '🕐' },
-  { path: '/patient/triage-history', title: '分诊历史', desc: '历次 AI 分诊记录', color: '#1abc9c', icon: '📝' },
-  { path: '/patient/medical-records', title: '我的病历', desc: '查看历史诊疗记录', color: '#e6a23c', icon: '📋' },
-  { path: '/patient/examinations', title: '检查检验', desc: '查看检查检验结果', color: '#f56c6c', icon: '🔬' },
-  { path: '/patient/prescriptions', title: '我的处方', desc: '查看处方详情', color: '#909399', icon: '💊' },
+  { path: '/patient/triage', title: 'AI 预问诊', desc: '提交症状描述，获取智能分诊建议', color: '#4facfe', icon: 'AI' },
+  { path: '/patient/appointments', title: '预约挂号', desc: '查看真实排班并预约医生', color: '#67c23a', icon: '挂' },
+  { path: '/patient/timeline', title: '诊疗时间线', desc: '查看挂号、就诊、检查、病历记录', color: '#9b59b6', icon: '线' },
+  { path: '/patient/triage-history', title: '分诊记录', desc: '查看历史 AI 分诊结果', color: '#1abc9c', icon: '诊' },
+  { path: '/patient/medical-records', title: '我的病历', desc: '查看已确认电子病历', color: '#e6a23c', icon: '历' },
+  { path: '/patient/examinations', title: '检查检验', desc: '查看检查申请和结果', color: '#f56c6c', icon: '检' },
+  { path: '/patient/prescriptions', title: '我的处方', desc: '查看处方详情', color: '#909399', icon: '方' },
 ]
 
 function goTo(path: string) {
@@ -25,198 +25,180 @@ function goTo(path: string) {
 }
 
 onMounted(async () => {
-  // 拉取真实姓名等信息（mock 阶段不会失败）
   try {
     patientInfo.value = await getPatientInfo()
   } catch (e) {
-    console.error('加载患者信息失败：', e)
+    console.error('加载患者信息失败', e)
   }
 })
 </script>
 
 <template>
   <div class="patient-home">
-    <!-- 顶部欢迎卡片 -->
     <div class="welcome-card">
       <div class="welcome-text">
         <div class="welcome-hi">您好，{{ patientInfo?.name || auth.userInfo?.username }}</div>
-        <div class="welcome-tip">今天也要好好照顾自己</div>
+        <div class="welcome-tip">请选择需要办理的诊疗服务</div>
       </div>
       <div class="welcome-icon">云脑</div>
     </div>
 
-    <!-- AI 问诊入口 -->
     <div class="triage-entry" @click="goTo('/patient/triage')">
       <div class="triage-left">
-        <div class="triage-title">AI 智能分诊</div>
-        <div class="triage-desc">描述症状，10 秒获取推荐科室</div>
+        <div class="triage-title">AI 预问诊</div>
+        <div class="triage-desc">先描述症状，再进入挂号和就诊流程</div>
       </div>
-      <div class="triage-arrow">→</div>
+      <div class="triage-arrow">›</div>
     </div>
 
-    <!-- 快捷功能 -->
     <div class="section">
-      <div class="section-title">常用功能</div>
+      <div class="section-title">常用服务</div>
       <div class="quick-grid">
-        <div
-          v-for="item in quickEntries"
-          :key="item.path"
-          class="quick-item"
-          @click="goTo(item.path)"
+        <button
+          v-for="entry in quickEntries"
+          :key="entry.path"
+          class="quick-card"
+          type="button"
+          @click="goTo(entry.path)"
         >
-          <div class="quick-icon" :style="{ background: item.color }">{{ item.icon }}</div>
-          <div class="quick-name">{{ item.title }}</div>
-          <div class="quick-desc">{{ item.desc }}</div>
-        </div>
+          <span class="quick-icon" :style="{ background: entry.color }">{{ entry.icon }}</span>
+          <span class="quick-body">
+            <span class="quick-title">{{ entry.title }}</span>
+            <span class="quick-desc">{{ entry.desc }}</span>
+          </span>
+        </button>
       </div>
-    </div>
-
-    <!-- 底部提示 -->
-    <div class="footer-tip">
-      本平台由 AI 辅助，所有诊断结果仅供参考<br />
-      具体诊疗请以医生意见为准
     </div>
   </div>
 </template>
 
 <style scoped>
 .patient-home {
-  padding: 16px 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.welcome-card,
+.triage-entry,
+.section {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 18px;
+  box-shadow: 0 8px 24px rgb(15 23 42 / 8%);
 }
 
 .welcome-card {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px;
-  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-  border-radius: 16px;
-  color: #ffffff;
-  margin-bottom: 16px;
 }
 
 .welcome-hi {
-  font-size: 18px;
-  font-weight: 600;
-  margin-bottom: 4px;
+  font-size: 22px;
+  font-weight: 700;
+  color: #1f2937;
 }
 
 .welcome-tip {
-  font-size: 13px;
-  opacity: 0.9;
+  margin-top: 6px;
+  font-size: 14px;
+  color: #6b7280;
 }
 
 .welcome-icon {
-  width: 48px;
-  height: 48px;
-  background: rgb(255 255 255 / 25%);
-  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: #e8f3ff;
+  color: #1677ff;
   font-weight: 700;
-  backdrop-filter: blur(10px);
 }
 
 .triage-entry {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 18px;
-  background: #ffffff;
-  border-radius: 14px;
-  margin-bottom: 20px;
-  box-shadow: 0 2px 8px rgb(0 0 0 / 4%);
   cursor: pointer;
-  user-select: none;
-  -webkit-user-select: none;
-  transition: transform 0.15s;
-}
-
-.triage-entry:active {
-  transform: scale(0.99);
+  background: linear-gradient(135deg, #4facfe 0%, #00c6ff 100%);
+  color: #ffffff;
 }
 
 .triage-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: #1a1a1a;
-  margin-bottom: 4px;
+  font-size: 18px;
+  font-weight: 700;
 }
 
 .triage-desc {
-  font-size: 12px;
-  color: #8e8e93;
+  margin-top: 6px;
+  font-size: 14px;
+  opacity: 0.9;
 }
 
 .triage-arrow {
-  font-size: 20px;
-  color: #1a73e8;
-  font-weight: 300;
-}
-
-.section {
-  margin-bottom: 20px;
+  font-size: 34px;
+  line-height: 1;
 }
 
 .section-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #1a1a1a;
-  margin-bottom: 12px;
-  padding-left: 4px;
+  margin-bottom: 14px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #1f2937;
 }
 
 .quick-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
   gap: 12px;
 }
 
-.quick-item {
+.quick-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #eef2f7;
+  border-radius: 10px;
   background: #ffffff;
-  border-radius: 14px;
-  padding: 16px 14px;
-  box-shadow: 0 2px 8px rgb(0 0 0 / 4%);
+  text-align: left;
   cursor: pointer;
-  transition: transform 0.15s;
 }
 
-.quick-item:active {
-  transform: scale(0.97);
+.quick-card:hover {
+  border-color: #4facfe;
+  box-shadow: 0 8px 20px rgb(79 172 254 / 14%);
 }
 
 .quick-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  margin-bottom: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  color: #ffffff;
+  font-weight: 700;
+  flex: 0 0 auto;
 }
 
-.quick-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: #1a1a1a;
-  margin-bottom: 4px;
+.quick-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.quick-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1f2937;
 }
 
 .quick-desc {
-  font-size: 11px;
-  color: #8e8e93;
-  line-height: 1.4;
-}
-
-.footer-tip {
-  text-align: center;
-  font-size: 11px;
-  color: #8e8e93;
-  line-height: 1.6;
-  margin-top: 24px;
-  padding: 0 20px;
+  font-size: 13px;
+  color: #6b7280;
 }
 </style>

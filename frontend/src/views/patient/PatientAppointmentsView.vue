@@ -10,7 +10,7 @@ import {
   cancelAppointment,
 } from '@/api/appointment'
 import { getPatientInfo } from '@/api/patient'
-import { mockDepartments, getMockSchedules } from '@/api/mock/medical-mock'
+import { getDepartments } from '@/api/department'
 import type { AppointmentResponse, ScheduleResponse, AppointmentStatus } from '@/types/appointment'
 
 const route = useRoute()
@@ -139,7 +139,14 @@ const selectedSchedule = ref<ScheduleResponse | null>(null)
 const confirmDialogVisible = ref(false)
 
 async function loadDepartments() {
-  departments.value = mockDepartments
+  try {
+    departments.value = (await getDepartments())
+      .filter((d) => d.status === 'ENABLED')
+      .map((d) => ({ id: d.id, name: d.name }))
+  } catch (e) {
+    console.error('加载科室失败：', e)
+    ElMessage.error('加载科室失败')
+  }
 }
 
 async function loadSchedules() {
@@ -214,19 +221,6 @@ function formatWeek(date: string): string {
 function formatTimeRange(
   item: AppointmentResponse | { bookedAt: string; scheduleId: number },
 ): string {
-  // 优先从排班取 startTime / endTime，这样显示的是真实预约就诊时段；
-  // MOCK 阶段排班数据来自 mockScheduleCache
-  try {
-    const schedule = getMockSchedules({}).find((s) => s.id === item.scheduleId)
-    if (schedule) {
-      const start = dayjs(schedule.startTime)
-      const end = dayjs(schedule.endTime)
-      return `${start.format('YYYY-MM-DD HH:mm')} - ${end.format('HH:mm')}`
-    }
-  } catch {
-    /* ignore */
-  }
-  // 兜底：取 bookedAt
   return dayjs(item.bookedAt).format('YYYY-MM-DD HH:mm')
 }
 

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { consultTriage, type TriageTurn } from '@/api/triage'
+import { getDepartments } from '@/api/department'
 import type { TriageResultResponse, TriagePriority } from '@/types/triage'
 
 const router = useRouter()
@@ -157,23 +158,26 @@ function goToAppointment() {
   }
 }
 
-const manualDepartments = [
-  { id: 1, name: '急诊科' },
-  { id: 2, name: '神经内科' },
-  { id: 3, name: '消化内科' },
-  { id: 4, name: '内科' },
-  { id: 5, name: '骨科' },
-  { id: 6, name: '皮肤科' },
-  { id: 7, name: '全科' },
-]
+const manualDepartments = ref<Array<{ id: number; name: string }>>([])
 const selectedManualDeptId = ref<number | null>(null)
+
+async function loadManualDepartments() {
+  try {
+    manualDepartments.value = (await getDepartments())
+      .filter((d) => d.status === 'ENABLED')
+      .map((d) => ({ id: d.id, name: d.name }))
+  } catch (e) {
+    console.error('加载科室失败：', e)
+    ElMessage.error('科室加载失败，请稍后重试')
+  }
+}
 
 function goToManualAppointment() {
   if (selectedManualDeptId.value === null) {
     ElMessage.warning('请先选择科室')
     return
   }
-  const dept = manualDepartments.find((d) => d.id === selectedManualDeptId.value)
+  const dept = manualDepartments.value.find((d) => d.id === selectedManualDeptId.value)
   router.push({
     path: '/patient/appointments',
     query: { departmentId: dept?.id, departmentName: dept?.name },
@@ -190,6 +194,8 @@ function resetForm() {
   followUpText.value = ''
   round.value = 0
 }
+
+onMounted(loadManualDepartments)
 </script>
 
 <template>

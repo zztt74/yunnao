@@ -1,6 +1,7 @@
 package com.neusoft.cloudbrain.triage.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 /**
@@ -9,7 +10,7 @@ import jakarta.validation.constraints.Size;
  * 患者输入症状，请求 AI 分诊建议。
  */
 public record TriageAnalyzeRequest(
-        @NotBlank(message = "患者 ID 不能为空")
+        @NotNull(message = "患者 ID 不能为空")
         Long patientId,
 
         @NotBlank(message = "主诉症状不能为空")
