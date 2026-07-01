@@ -67,7 +67,12 @@ public class TriageService {
     private final ScheduleRepository scheduleRepository;
 
     /**
-     * AI 分诊分析
+     * AI 分诊分析（UF-01 扩展多轮）
+     *
+     * 多轮扩展（向后兼容）：
+     * - 请求带 conversationId/history/round 视为多轮，AI 可基于上下文追问或给最终建议
+     * - 请求不带这些字段视为单轮（老行为），isFinal=true、followUpQuestion=null
+     * - 每轮仍生成一条独立 TriageRecord（不持久化会话），conversationId 仅在响应里回显用于前端串联展示
      *
      * 事务保证：分诊记录保存与 AI 结果记录在同一事务内完成。
      */
@@ -82,6 +87,11 @@ public class TriageService {
 
         // 患者只能为自己分诊
         checkPatientOwnership(request.patientId());
+
+        // 多轮上下文（UF-01）
+        Integer round = request.round() != null ? request.round() : 1;
+        boolean isMultiRound = request.conversationId() != null && !request.conversationId().isBlank()
+                || (request.history() != null && !request.history().isEmpty());
 
         LocalDateTime now = LocalDateTime.now();
 
@@ -101,9 +111,19 @@ public class TriageService {
         // 3. 构建 AI 请求（最小化输入，不包含患者隐私 ID）
         TriageAIRequest aiRequest = buildAIRequest(patient, request);
 
+        // AI 追问/终结标记（多轮扩展，单轮时默认 isFinal=true）
+        boolean isFinal = true;
+        String followUpQuestion = null;
+
         // 4. 调用 AI 分诊服务（含降级处理）
         try {
-            TriageAIResult aiResult = aiTriageService.analyze(aiRequest);
+            TriageAIResult aiResult;
+            if (isMultiRound && request.history() != null && !request.history().isEmpty()) {
+                // 多轮：传 history 给 AI provider
+                aiResult = aiTriageService.analyze(aiRequest, request.history(), round);
+            } else {
+                aiResult = aiTriageService.analyze(aiRequest);
+            }
 
             // AI 成功：保存 AI 结果
             record.setAiDepartmentCode(aiResult.departmentCode());
@@ -117,12 +137,20 @@ public class TriageService {
             // 5. 映射真实科室
             mapDepartment(record, aiResult.departmentCode(), now);
 
+            // 多轮语义：首轮且无科室编码时视为 AI 仍在追问
+            // 默认 isFinal=true（单轮兼容）；若 AI 主动追问，由 AI provider 通过 reason 暗示
+            // 当前 AI 契约 TriageAIResult 无显式 isFinal 字段，保留默认 true，由前端按 reason 判断
+            isFinal = true;
+            followUpQuestion = null;
+
         } catch (BusinessException e) {
             // AI 失败：降级处理
             log.warn("AI 分诊失败，进入降级流程: code={}, message={}", e.getCode(), e.getMessage());
             record.setAiStatus("FAILED");
             record.setAiFailureReason(e.getMessage());
             record.setMappingStatus("MANUAL");
+            // 失败时仍视为 final（前端展示降级提示）
+            isFinal = true;
         }
 
         // 6. 保存分诊记录
@@ -134,7 +162,31 @@ public class TriageService {
             recommendedSchedules = queryRecommendedSchedules(record.getMappedDepartmentId());
         }
 
-        return toResponse(record, recommendedSchedules);
+        TriageAnalyzeResponse response = toResponse(record, recommendedSchedules);
+        return new TriageAnalyzeResponse(
+                response.triageRecordId(),
+                response.patientId(),
+                response.symptoms(),
+                response.duration(),
+                response.supplement(),
+                response.aiDepartmentCode(),
+                response.aiPriority(),
+                response.aiReason(),
+                response.aiSafetyNotice(),
+                response.aiEmergencySuggested(),
+                response.aiSymptomKeywords(),
+                response.aiStatus(),
+                response.aiFailureReason(),
+                response.mappedDepartmentId(),
+                response.mappedDepartmentName(),
+                response.mappingStatus(),
+                response.recommendedSchedules(),
+                response.createdAt(),
+                // UF-01 多轮扩展
+                request.conversationId(),
+                round,
+                isFinal,
+                followUpQuestion);
     }
 
     /**
@@ -295,7 +347,12 @@ public class TriageService {
                 mappedDept != null ? mappedDept.getName() : null,
                 record.getMappingStatus(),
                 schedules,
-                record.getCreatedAt());
+                record.getCreatedAt(),
+                // UF-01 多轮扩展默认值（toResponse 不负责多轮语义，由 analyze 方法覆盖）
+                null,
+                null,
+                null,
+                null);
     }
 
     /**

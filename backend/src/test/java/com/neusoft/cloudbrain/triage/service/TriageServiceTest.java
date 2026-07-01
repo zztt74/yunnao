@@ -363,4 +363,79 @@ class TriageServiceTest {
         assertThat(aiRequest.ageRange()).isNotNull();
         assertThat(aiRequest.gender()).isEqualTo("MALE");
     }
+
+    // ============================================================
+    // UF-01 多轮分诊
+    // ============================================================
+
+    @Test
+    @DisplayName("UF-01 多轮分诊 - 带 history 时调用 AI 多轮重载并回显 conversationId/round")
+    void analyze_multiRound_shouldCallAIWithHistoryAndEchoContext() {
+        com.neusoft.cloudbrain.triage.dto.ChatMessage msg =
+                new com.neusoft.cloudbrain.triage.dto.ChatMessage("USER", "之前说头痛");
+        TriageAnalyzeRequest request = new TriageAnalyzeRequest(
+                1L, "头痛、发热三天", "三天", "无补充",
+                "conv-abc-123", java.util.List.of(msg), 2);
+
+        TriageAIResult aiResult = new TriageAIResult(
+                "DEPT_INTERNAL", "MEDIUM",
+                List.of("头痛", "发热"),
+                "结合前述，建议内科",
+                "提示",
+                false);
+
+        when(patientRepository.findById(1L)).thenReturn(Optional.of(testPatient));
+        when(aiTriageService.analyze(any(TriageAIRequest.class), any(), eq(2))).thenReturn(aiResult);
+        when(departmentRepository.findByCode("DEPT_INTERNAL")).thenReturn(Optional.of(testDepartment));
+        when(scheduleRepository.findByDepartmentIdAndScheduleDateAndStatusNot(
+                any(), any(), any(), any())).thenReturn(new PageImpl<>(List.of()));
+        when(departmentRepository.findById(1L)).thenReturn(Optional.of(testDepartment));
+        when(triageRecordRepository.save(any(TriageRecord.class))).thenAnswer(invocation -> {
+            TriageRecord record = invocation.getArgument(0);
+            record.setId(1L);
+            return record;
+        });
+
+        TriageAnalyzeResponse response = triageService.analyze(request);
+
+        assertThat(response.conversationId()).isEqualTo("conv-abc-123");
+        assertThat(response.round()).isEqualTo(2);
+        assertThat(response.isFinal()).isTrue();
+        assertThat(response.followUpQuestion()).isNull();
+        verify(aiTriageService).analyze(any(TriageAIRequest.class), any(), eq(2));
+    }
+
+    @Test
+    @DisplayName("UF-01 单轮兼容 - 不带 conversationId/history 时回显 round=1、isFinal=true")
+    void analyze_singleRound_shouldDefaultToRound1AndFinal() {
+        TriageAnalyzeRequest request = new TriageAnalyzeRequest(
+                1L, "头痛、发热三天", "三天", "无补充");
+
+        TriageAIResult aiResult = new TriageAIResult(
+                "DEPT_INTERNAL", "MEDIUM",
+                List.of("头痛"),
+                "建议内科",
+                "提示",
+                false);
+
+        when(patientRepository.findById(1L)).thenReturn(Optional.of(testPatient));
+        when(aiTriageService.analyze(any(TriageAIRequest.class))).thenReturn(aiResult);
+        when(departmentRepository.findByCode("DEPT_INTERNAL")).thenReturn(Optional.of(testDepartment));
+        when(scheduleRepository.findByDepartmentIdAndScheduleDateAndStatusNot(
+                any(), any(), any(), any())).thenReturn(new PageImpl<>(List.of()));
+        when(departmentRepository.findById(1L)).thenReturn(Optional.of(testDepartment));
+        when(triageRecordRepository.save(any(TriageRecord.class))).thenAnswer(invocation -> {
+            TriageRecord record = invocation.getArgument(0);
+            record.setId(1L);
+            return record;
+        });
+
+        TriageAnalyzeResponse response = triageService.analyze(request);
+
+        assertThat(response.conversationId()).isNull();
+        assertThat(response.round()).isEqualTo(1);
+        assertThat(response.isFinal()).isTrue();
+        // 单轮不走多轮重载
+        verify(aiTriageService).analyze(any(TriageAIRequest.class));
+    }
 }

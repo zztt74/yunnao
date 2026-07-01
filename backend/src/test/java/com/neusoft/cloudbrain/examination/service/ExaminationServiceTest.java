@@ -4,6 +4,12 @@ import com.neusoft.cloudbrain.ai.api.AIResultInterpretationService;
 import com.neusoft.cloudbrain.ai.dto.ResultInterpretationAIRequest;
 import com.neusoft.cloudbrain.ai.dto.ResultInterpretationAIResult;
 import com.neusoft.cloudbrain.common.exception.BusinessException;
+import com.neusoft.cloudbrain.department.entity.Department;
+import com.neusoft.cloudbrain.department.repository.DepartmentRepository;
+import com.neusoft.cloudbrain.device.entity.Device;
+import com.neusoft.cloudbrain.device.entity.DeviceUsage;
+import com.neusoft.cloudbrain.device.repository.DeviceRepository;
+import com.neusoft.cloudbrain.device.repository.DeviceUsageRepository;
 import com.neusoft.cloudbrain.doctor.entity.Doctor;
 import com.neusoft.cloudbrain.doctor.repository.DoctorRepository;
 import com.neusoft.cloudbrain.encounter.entity.Encounter;
@@ -14,6 +20,7 @@ import com.neusoft.cloudbrain.examination.dto.ExaminationOrderResponse;
 import com.neusoft.cloudbrain.examination.dto.ExaminationResultRequest;
 import com.neusoft.cloudbrain.examination.dto.ExaminationResultResponse;
 import com.neusoft.cloudbrain.examination.dto.ExaminationReturnRequest;
+import com.neusoft.cloudbrain.examination.dto.ExaminationTrackingResponse;
 import com.neusoft.cloudbrain.examination.entity.ExaminationOrder;
 import com.neusoft.cloudbrain.examination.entity.ExaminationResult;
 import com.neusoft.cloudbrain.examination.repository.ExaminationOrderRepository;
@@ -70,6 +77,15 @@ class ExaminationServiceTest {
 
     @Mock
     private AIResultInterpretationService aiResultInterpretationService;
+
+    @Mock
+    private DepartmentRepository departmentRepository;
+
+    @Mock
+    private DeviceRepository deviceRepository;
+
+    @Mock
+    private DeviceUsageRepository deviceUsageRepository;
 
     @InjectMocks
     private ExaminationService examinationService;
@@ -421,5 +437,100 @@ class ExaminationServiceTest {
         assertThatThrownBy(() -> examinationService.getOrderById(99L))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("httpStatus", 404);
+    }
+
+    // ============================================================
+    // UF-02 患者检查流程追踪
+    // ============================================================
+
+    @Test
+    @DisplayName("UF-02 患者流程追踪 - 返回全状态申请 + 引导字段")
+    void getTrackingByPatient_shouldReturnAllStatusWithGuide() {
+        ExaminationOrder ordered = ExaminationOrder.builder()
+                .id(1L).encounterId(1L).patientId(1L).doctorId(1L)
+                .orderType("EXAMINATION").itemCode("US").itemName("腹部 B 超")
+                .status("ORDERED").orderedAt(LocalDateTime.now())
+                .createdAt(LocalDateTime.now()).updatedAt(LocalDateTime.now()).build();
+
+        when(examinationOrderRepository.findByPatientId(1L)).thenReturn(List.of(ordered));
+        when(doctorRepository.findById(1L)).thenReturn(Optional.of(testDoctor));
+        when(encounterRepository.findById(1L)).thenReturn(Optional.of(testEncounter));
+        Department dept = Department.builder().id(1L).name("内科").description("1 号楼 3 层").build();
+        when(departmentRepository.findById(1L)).thenReturn(Optional.of(dept));
+        when(deviceUsageRepository.findByEncounterId(1L)).thenReturn(List.of());
+
+        List<ExaminationTrackingResponse> result = examinationService.getTrackingByPatient(1L);
+
+        assertThat(result).hasSize(1);
+        ExaminationTrackingResponse r = result.get(0);
+        assertThat(r.status()).isEqualTo("ORDERED");
+        assertThat(r.doctorName()).isEqualTo("张医生");
+        assertThat(r.departmentName()).isEqualTo("内科");
+        assertThat(r.nextAction()).contains("内科");
+        assertThat(r.deviceName()).isNull();
+    }
+
+    @Test
+    @DisplayName("UF-02 患者流程追踪 - REVIEWED 状态派生 nextAction")
+    void getTrackingByPatient_shouldDeriveNextActionForReviewed() {
+        ExaminationOrder reviewed = ExaminationOrder.builder()
+                .id(2L).encounterId(1L).patientId(1L).doctorId(1L)
+                .orderType("LABORATORY").itemCode("CBC").itemName("血常规")
+                .status("REVIEWED").orderedAt(LocalDateTime.now())
+                .reviewedAt(LocalDateTime.now())
+                .createdAt(LocalDateTime.now()).updatedAt(LocalDateTime.now()).build();
+
+        when(examinationOrderRepository.findByPatientId(1L)).thenReturn(List.of(reviewed));
+        when(doctorRepository.findById(1L)).thenReturn(Optional.of(testDoctor));
+        when(encounterRepository.findById(1L)).thenReturn(Optional.of(testEncounter));
+        when(departmentRepository.findById(1L)).thenReturn(Optional.of(
+                Department.builder().id(1L).name("内科").build()));
+        when(deviceUsageRepository.findByEncounterId(1L)).thenReturn(List.of());
+
+        List<ExaminationTrackingResponse> result = examinationService.getTrackingByPatient(1L);
+
+        assertThat(result.get(0).nextAction()).isEqualTo("已审核，可查看报告");
+    }
+
+    @Test
+    @DisplayName("UF-02 患者流程追踪 - 含设备使用记录时返回设备信息")
+    void getTrackingByPatient_shouldReturnDeviceInfoWhenUsageExists() {
+        when(examinationOrderRepository.findByPatientId(1L)).thenReturn(List.of(testOrder));
+        when(doctorRepository.findById(1L)).thenReturn(Optional.of(testDoctor));
+        when(encounterRepository.findById(1L)).thenReturn(Optional.of(testEncounter));
+        when(departmentRepository.findById(1L)).thenReturn(Optional.of(
+                Department.builder().id(1L).name("内科").build()));
+
+        DeviceUsage usage = DeviceUsage.builder()
+                .id(1L).deviceId(10L).encounterId(1L).usedBy(20L)
+                .startTime(LocalDateTime.now()).status("COMPLETED")
+                .createdAt(LocalDateTime.now()).updatedAt(LocalDateTime.now()).build();
+        when(deviceUsageRepository.findByEncounterId(1L)).thenReturn(List.of(usage));
+        Device device = Device.builder()
+                .id(10L).code("DEV-US-001").name("彩超 #1").type("ULTRASOUND")
+                .status("AVAILABLE").location("2 号楼 1 层 B 超室")
+                .createdAt(LocalDateTime.now()).updatedAt(LocalDateTime.now()).build();
+        when(deviceRepository.findById(10L)).thenReturn(Optional.of(device));
+
+        List<ExaminationTrackingResponse> result = examinationService.getTrackingByPatient(1L);
+
+        assertThat(result.get(0).deviceName()).isEqualTo("彩超 #1");
+        assertThat(result.get(0).deviceLocation()).isEqualTo("2 号楼 1 层 B 超室");
+    }
+
+    @Test
+    @DisplayName("UF-02 按就诊 ID 查询流程追踪")
+    void getTrackingByEncounter_shouldReturnList() {
+        when(examinationOrderRepository.findByEncounterId(1L)).thenReturn(List.of(testOrder));
+        when(doctorRepository.findById(1L)).thenReturn(Optional.of(testDoctor));
+        when(encounterRepository.findById(1L)).thenReturn(Optional.of(testEncounter));
+        when(departmentRepository.findById(1L)).thenReturn(Optional.of(
+                Department.builder().id(1L).name("内科").build()));
+        when(deviceUsageRepository.findByEncounterId(1L)).thenReturn(List.of());
+
+        List<ExaminationTrackingResponse> result = examinationService.getTrackingByEncounter(1L);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).itemName()).isEqualTo("血常规");
     }
 }

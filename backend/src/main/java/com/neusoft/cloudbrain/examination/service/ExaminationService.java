@@ -5,6 +5,12 @@ import com.neusoft.cloudbrain.ai.dto.ResultInterpretationAIRequest;
 import com.neusoft.cloudbrain.ai.dto.ResultInterpretationAIResult;
 import com.neusoft.cloudbrain.auth.dto.AuthPrincipal;
 import com.neusoft.cloudbrain.auth.security.SecurityUtils;
+import com.neusoft.cloudbrain.department.entity.Department;
+import com.neusoft.cloudbrain.department.repository.DepartmentRepository;
+import com.neusoft.cloudbrain.device.entity.Device;
+import com.neusoft.cloudbrain.device.entity.DeviceUsage;
+import com.neusoft.cloudbrain.device.repository.DeviceRepository;
+import com.neusoft.cloudbrain.device.repository.DeviceUsageRepository;
 import com.neusoft.cloudbrain.doctor.entity.Doctor;
 import com.neusoft.cloudbrain.doctor.repository.DoctorRepository;
 import com.neusoft.cloudbrain.encounter.entity.Encounter;
@@ -15,6 +21,7 @@ import com.neusoft.cloudbrain.examination.dto.ExaminationOrderResponse;
 import com.neusoft.cloudbrain.examination.dto.ExaminationResultRequest;
 import com.neusoft.cloudbrain.examination.dto.ExaminationResultResponse;
 import com.neusoft.cloudbrain.examination.dto.ExaminationReturnRequest;
+import com.neusoft.cloudbrain.examination.dto.ExaminationTrackingResponse;
 import com.neusoft.cloudbrain.examination.entity.ExaminationOrder;
 import com.neusoft.cloudbrain.examination.entity.ExaminationResult;
 import com.neusoft.cloudbrain.examination.exception.ExaminationErrorCode;
@@ -66,6 +73,9 @@ public class ExaminationService {
     private final DoctorRepository doctorRepository;
     private final PatientRepository patientRepository;
     private final AIResultInterpretationService aiResultInterpretationService;
+    private final DepartmentRepository departmentRepository;
+    private final DeviceRepository deviceRepository;
+    private final DeviceUsageRepository deviceUsageRepository;
 
     // ============================================================
     // 创建检查检验申请
@@ -399,6 +409,98 @@ public class ExaminationService {
     @Transactional(readOnly = true)
     public boolean hasPendingExaminations(Long encounterId) {
         return examinationOrderRepository.countPendingByEncounterId(encounterId) > 0;
+    }
+
+    // ============================================================
+    // 患者检查流程追踪（UF-02）
+    // ============================================================
+
+    /**
+     * 患者检查流程追踪（UF-02）
+     *
+     * 返回患者本人所有状态的检查申请 + 流程引导字段（医生名/科室/设备/nextAction）。
+     * 不返回结果内容（resultText/conclusion 等），结果详情走 /api/examinations/{id}/result 且仅 REVIEWED 可见。
+     *
+     * 设备关联说明：
+     * - DeviceUsage 按 encounterId 关联，不直接关联 examinationOrderId
+     * - 一个 encounter 多项检查 + 多次设备使用时无法精确匹配
+     * - 因此每条申请的 deviceName/deviceLocation 取该就诊下首个设备使用记录的设备信息（保守展示）
+     * - LABORATORY 类通常无设备使用记录，相关字段为 null
+     */
+    @Transactional(readOnly = true)
+    public List<ExaminationTrackingResponse> getTrackingByPatient(Long patientId) {
+        checkPatientOwnership(patientId);
+
+        List<ExaminationOrder> orders = examinationOrderRepository.findByPatientId(patientId);
+
+        return orders.stream()
+                .map(this::toTrackingResponse)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 按就诊 ID 查询检查流程追踪列表（医生端可用）
+     */
+    @Transactional(readOnly = true)
+    public List<ExaminationTrackingResponse> getTrackingByEncounter(Long encounterId) {
+        List<ExaminationOrder> orders = examinationOrderRepository.findByEncounterId(encounterId);
+        return orders.stream()
+                .map(this::toTrackingResponse)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 构建追踪响应（聚合 Doctor/Department/Device 信息）
+     */
+    private ExaminationTrackingResponse toTrackingResponse(ExaminationOrder order) {
+        Doctor doctor = doctorRepository.findById(order.getDoctorId()).orElse(null);
+        Encounter encounter = encounterRepository.findById(order.getEncounterId()).orElse(null);
+
+        Long departmentId = encounter != null ? encounter.getDepartmentId() : null;
+        Department department = departmentId != null
+                ? departmentRepository.findById(departmentId).orElse(null)
+                : null;
+
+        String doctorName = doctor != null ? doctor.getName() : null;
+        String departmentName = department != null ? department.getName() : null;
+        // Department 无 location 字段，用 description 兜底（若后续加 location 字段再替换）
+        String departmentLocation = department != null ? department.getDescription() : null;
+
+        // 设备关联：按 encounterId 取首个设备使用记录
+        String deviceName = null;
+        String deviceLocation = null;
+        List<DeviceUsage> usages = deviceUsageRepository.findByEncounterId(order.getEncounterId());
+        if (usages != null && !usages.isEmpty()) {
+            DeviceUsage firstUsage = usages.get(0);
+            Device device = deviceRepository.findById(firstUsage.getDeviceId()).orElse(null);
+            if (device != null) {
+                deviceName = device.getName();
+                deviceLocation = device.getLocation();
+            }
+        }
+
+        String nextAction = ExaminationTrackingResponse.deriveNextAction(order.getStatus(), departmentName);
+
+        return new ExaminationTrackingResponse(
+                order.getId(),
+                order.getEncounterId(),
+                order.getOrderType(),
+                order.getItemCode(),
+                order.getItemName(),
+                order.getStatus(),
+                doctorName,
+                departmentId,
+                departmentName,
+                departmentLocation,
+                nextAction,
+                deviceName,
+                deviceLocation,
+                order.getOrderedAt(),
+                order.getInProgressAt(),
+                order.getResultEnteredAt(),
+                order.getReviewedAt(),
+                order.getCancelledAt(),
+                order.getCancelReason());
     }
 
     // ============================================================

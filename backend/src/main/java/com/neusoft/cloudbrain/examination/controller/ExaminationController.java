@@ -8,6 +8,7 @@ import com.neusoft.cloudbrain.examination.dto.ExaminationOrderResponse;
 import com.neusoft.cloudbrain.examination.dto.ExaminationResultRequest;
 import com.neusoft.cloudbrain.examination.dto.ExaminationResultResponse;
 import com.neusoft.cloudbrain.examination.dto.ExaminationReturnRequest;
+import com.neusoft.cloudbrain.examination.dto.ExaminationTrackingResponse;
 import com.neusoft.cloudbrain.examination.service.ExaminationService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -192,6 +193,34 @@ public class ExaminationController {
             @PathVariable Long id,
             HttpServletRequest httpRequest) {
         ExaminationResultResponse response = examinationService.getResultByOrderId(id);
+        return ApiResponse.success(response, (String) httpRequest.getAttribute("traceId"));
+    }
+
+    /**
+     * 患者检查流程追踪（UF-02）
+     *
+     * 返回患者本人所有状态的检查申请 + 流程引导字段（医生名/科室/设备/nextAction）。
+     * 不返回结果内容；结果详情走 /api/examinations/{id}/result 且仅 REVIEWED 可见。
+     *
+     * 与 /patient/{patientId} 区别：那个返回 ExaminationOrderResponse（无引导字段），分页，前端 filter REVIEWED；
+     * 这个返回 ExaminationTrackingResponse（带 nextAction/医生名/科室名/设备），不分页，全状态。
+     */
+    @GetMapping("/patient/{patientId}/tracking")
+    public ApiResponse<List<ExaminationTrackingResponse>> getTrackingByPatient(
+            @PathVariable Long patientId,
+            HttpServletRequest httpRequest) {
+        List<ExaminationTrackingResponse> response = examinationService.getTrackingByPatient(patientId);
+        return ApiResponse.success(response, (String) httpRequest.getAttribute("traceId"));
+    }
+
+    /**
+     * 按就诊 ID 查询检查流程追踪（医生端可用，UF-02）
+     */
+    @GetMapping("/encounter/{encounterId}/tracking")
+    public ApiResponse<List<ExaminationTrackingResponse>> getTrackingByEncounter(
+            @PathVariable Long encounterId,
+            HttpServletRequest httpRequest) {
+        List<ExaminationTrackingResponse> response = examinationService.getTrackingByEncounter(encounterId);
         return ApiResponse.success(response, (String) httpRequest.getAttribute("traceId"));
     }
 }
