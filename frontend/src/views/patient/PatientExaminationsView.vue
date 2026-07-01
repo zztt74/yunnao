@@ -8,7 +8,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import dayjs from 'dayjs'
 import { ElMessage } from 'element-plus'
-import { getMyExaminations } from '@/api/examination'
+import { getExaminationById, getMyExaminations } from '@/api/examination'
 import type {
   ExaminationResponse,
   ExaminationStatus,
@@ -128,9 +128,25 @@ const typeMeta: Record<ExaminationType, { label: string; icon: string; color: st
   LABORATORY: { label: '检验', icon: '🧪', color: '#67c23a' },
 }
 
-function viewDetail(r: ExaminationResponse) {
+async function viewDetail(r: ExaminationResponse) {
   detailRecord.value = r
   showDetail.value = true
+  if (r.status !== 'REVIEWED') return
+  try {
+    const detail = await getExaminationById(r.id)
+    detailRecord.value = {
+      ...detail,
+      doctorName: r.doctorName || detail.doctorName,
+      departmentName: r.departmentName || detail.departmentName,
+      departmentLocation: r.departmentLocation,
+      nextAction: r.nextAction,
+      deviceName: r.deviceName,
+      deviceLocation: r.deviceLocation,
+    }
+  } catch (e) {
+    console.error('加载检查报告详情失败：', e)
+    ElMessage.warning('报告详情暂时无法加载，请稍后重试')
+  }
 }
 
 function closeDetail() {
@@ -265,6 +281,7 @@ watch([dateFrom, dateTo], () => {
             <div class="exam-card-body">
               <div class="exam-name">{{ r.itemName }}</div>
               <div class="exam-purpose">目的：{{ r.purpose || '常规检查' }}</div>
+              <div v-if="r.nextAction" class="exam-next-action">{{ r.nextAction }}</div>
               <div class="exam-meta">
                 <span class="meta-item">
                   <span class="meta-icon">👨‍⚕️</span>
@@ -310,7 +327,9 @@ watch([dateFrom, dateTo], () => {
                 </span>
                 <span class="status-step-title">当前进度</span>
               </div>
-              <div class="status-step-text">{{ detailStatusMeta.nextStep }}</div>
+              <div class="status-step-text">
+                {{ detailRecord.nextAction || detailStatusMeta.nextStep }}
+              </div>
             </div>
 
             <!-- 基本信息 -->
@@ -326,9 +345,19 @@ watch([dateFrom, dateTo], () => {
                   <span class="info-label">就诊科室</span>
                   <span class="info-value">{{ detailRecord.departmentName || '--' }}</span>
                 </div>
+                <div v-if="detailRecord.departmentLocation" class="info-row">
+                  <span class="info-label">检查地点</span>
+                  <span class="info-value">{{ detailRecord.departmentLocation }}</span>
+                </div>
                 <div class="info-row">
                   <span class="info-label">申请医生</span>
                   <span class="info-value">{{ detailRecord.doctorName || '--' }}</span>
+                </div>
+                <div v-if="detailRecord.deviceName || detailRecord.deviceLocation" class="info-row">
+                  <span class="info-label">相关设备</span>
+                  <span class="info-value">
+                    {{ [detailRecord.deviceName, detailRecord.deviceLocation].filter(Boolean).join(' / ') }}
+                  </span>
                 </div>
                 <div class="info-row">
                   <span class="info-label">目的</span>
@@ -349,6 +378,10 @@ watch([dateFrom, dateTo], () => {
                   <span class="info-value">
                     {{ dayjs(detailRecord.reviewedAt).format('YYYY-MM-DD HH:mm') }}
                   </span>
+                </div>
+                <div v-if="detailRecord.cancelReason" class="info-row">
+                  <span class="info-label">取消原因</span>
+                  <span class="info-value">{{ detailRecord.cancelReason }}</span>
                 </div>
               </div>
             </div>
@@ -618,6 +651,17 @@ watch([dateFrom, dateTo], () => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.exam-next-action {
+  font-size: 12px;
+  color: #475569;
+  background: #f8fafc;
+  border-left: 3px solid #91d5ff;
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin-bottom: 8px;
+  line-height: 1.5;
 }
 
 .exam-meta {

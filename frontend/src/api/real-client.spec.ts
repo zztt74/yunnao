@@ -16,6 +16,7 @@ import { getPatientInfo, updatePatientProfile } from '@/api/patient'
 import { getAvailableSchedules, getMyAppointments } from '@/api/appointment'
 import { consultTriage, getMyTriageRecords } from '@/api/triage'
 import { createDeviceUsage, getAllDevices } from '@/api/device'
+import { getMyExaminations } from '@/api/examination'
 
 function success<T>(data: T) {
   return {
@@ -185,6 +186,10 @@ describe('real API clients', () => {
         mappedDepartmentName: '急诊科',
         mappingStatus: 'MAPPED',
         createdAt: '2026-06-28T10:00:00',
+        conversationId: null,
+        round: 1,
+        isFinal: true,
+        followUpQuestion: null,
       }),
     )
 
@@ -197,6 +202,63 @@ describe('real API clients', () => {
     })
     expect(triage.recommendedDepartmentName).toBe('急诊科')
     expect(triage.priority).toBe('EMERGENCY')
+    expect(triage.round).toBe(1)
+    expect(triage.isFinal).toBe(true)
+
+    apiClientMock.get.mockResolvedValueOnce(success(patient))
+    apiClientMock.post.mockResolvedValueOnce(
+      success({
+        triageRecordId: 9,
+        patientId: 42,
+        symptoms: '胸痛伴出汗',
+        duration: '30分钟',
+        supplement: '无过敏',
+        aiDepartmentCode: 'DEPT_EMERGENCY',
+        aiPriority: 'EMERGENCY',
+        aiReason: '存在急诊风险',
+        aiSafetyNotice: '请立即就诊',
+        aiEmergencySuggested: true,
+        aiStatus: 'SUCCESS',
+        aiFailureReason: null,
+        mappedDepartmentId: 7,
+        mappedDepartmentName: '急诊科',
+        mappingStatus: 'MAPPED',
+        createdAt: '2026-06-28T10:01:00',
+        conversationId: '12345678-1234-1234-1234-123456789abc',
+        round: 2,
+        isFinal: false,
+        followUpQuestion: '是否伴有呼吸困难？',
+      }),
+    )
+
+    await expect(consultTriage({
+      chiefComplaint: '胸痛伴出汗',
+      duration: '30分钟',
+      additionalInfo: '无过敏',
+      conversationId: '12345678-1234-1234-1234-123456789abc',
+      round: 2,
+      history: [
+        { role: 'user', text: '胸痛' },
+        { role: 'ai', text: '存在急诊风险' },
+      ],
+    })).resolves.toMatchObject({
+      conversationId: '12345678-1234-1234-1234-123456789abc',
+      round: 2,
+      isFinal: false,
+      followUpQuestion: '是否伴有呼吸困难？',
+    })
+    expect(apiClientMock.post).toHaveBeenLastCalledWith('/triage/analyze', {
+      patientId: 42,
+      symptoms: '胸痛伴出汗',
+      duration: '30分钟',
+      supplement: '无过敏',
+      conversationId: '12345678-1234-1234-1234-123456789abc',
+      round: 2,
+      history: [
+        { role: 'USER', content: '胸痛' },
+        { role: 'ASSISTANT', content: '存在急诊风险' },
+      ],
+    })
 
     apiClientMock.get.mockResolvedValueOnce(success(patient))
     apiClientMock.get.mockResolvedValueOnce(
@@ -296,5 +358,47 @@ describe('real API clients', () => {
       encounterId: 9,
       notes: 'for exam',
     })
+  })
+
+  it('uses the patient examination tracking contract', async () => {
+    const patient = { id: 42 }
+    apiClientMock.get.mockResolvedValueOnce(success(patient))
+    apiClientMock.get.mockResolvedValueOnce(
+      success([
+        {
+          orderId: 18,
+          encounterId: 9,
+          orderType: 'EXAMINATION',
+          itemCode: 'XRAY-CHEST',
+          itemName: '胸部 X 光',
+          status: 'ORDERED',
+          doctorName: '李医生',
+          departmentId: 2,
+          departmentName: '影像科',
+          departmentLocation: '2 楼影像中心',
+          nextAction: '医生已开立，请前往影像科检查',
+          deviceName: 'X 光机 01',
+          deviceLocation: '201 室',
+          orderedAt: '2026-06-28T10:00:00',
+          inProgressAt: null,
+          resultEnteredAt: null,
+          reviewedAt: null,
+          cancelledAt: null,
+          cancelReason: null,
+        },
+      ]),
+    )
+
+    await expect(getMyExaminations()).resolves.toMatchObject([
+      {
+        id: 18,
+        status: 'ORDERED',
+        nextAction: '医生已开立，请前往影像科检查',
+        departmentLocation: '2 楼影像中心',
+        deviceName: 'X 光机 01',
+        deviceLocation: '201 室',
+      },
+    ])
+    expect(apiClientMock.get).toHaveBeenCalledWith('/examinations/patient/42/tracking')
   })
 })

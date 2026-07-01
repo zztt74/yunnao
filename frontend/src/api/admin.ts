@@ -426,6 +426,8 @@ function mapTriageRecord(record: BackendTriageRecordResponse): AdminTriageRecord
     safetyAdvice: record.aiSafetyNotice ?? '',
     emergencyAdvice: record.aiEmergencySuggested ? record.aiSafetyNotice ?? '' : undefined,
     aiSummary: record.aiReason ?? record.aiFailureReason ?? '',
+    round: 1,
+    isFinal: true,
     createdAt: record.createdAt,
   }
 }

@@ -25,6 +25,10 @@ interface TriageAnalyzeResponse {
   mappedDepartmentName?: string | null
   mappingStatus?: string | null
   createdAt: string
+  conversationId?: string | null
+  round?: number | null
+  isFinal?: boolean | null
+  followUpQuestion?: string | null
 }
 
 interface TriageRecordApiResponse {
@@ -47,7 +51,6 @@ interface TriageRecordApiResponse {
 
 /**
  * 多轮追问的请求载荷。
- * 后端当前冻结接口只接收本轮症状、持续时间和补充信息，history 保留给页面状态使用。
  */
 export interface TriageConsultWithHistoryRequest extends TriageConsultRequest {
   history?: TriageTurn[]
@@ -84,7 +87,10 @@ function mapAnalyzeResponse(response: TriageAnalyzeResponse): TriageResultRespon
     reason: response.aiFailureReason ?? response.aiReason ?? 'AI 分诊未返回推荐理由',
     safetyAdvice: response.aiSafetyNotice ?? 'AI 分诊仅供辅助参考，请以医生判断为准。',
     emergencyAdvice: response.aiEmergencySuggested ? '症状存在急诊风险，请优先急诊处理。' : undefined,
-    followUpQuestion: response.mappingStatus === 'MANUAL' ? '请选择合适科室继续挂号。' : undefined,
+    followUpQuestion: response.followUpQuestion ?? undefined,
+    conversationId: response.conversationId ?? undefined,
+    round: response.round ?? 1,
+    isFinal: response.isFinal ?? true,
     createdAt: response.createdAt,
   }
 }
@@ -99,20 +105,36 @@ function mapRecordResponse(response: TriageRecordApiResponse): TriageResultRespo
     reason: response.aiFailureReason ?? response.aiReason ?? response.symptoms,
     safetyAdvice: response.aiSafetyNotice ?? 'AI 分诊仅供辅助参考，请以医生判断为准。',
     emergencyAdvice: response.aiEmergencySuggested ? '症状存在急诊风险，请优先急诊处理。' : undefined,
+    round: 1,
+    isFinal: true,
     createdAt: response.createdAt,
   }
+}
+
+function mapHistory(history?: TriageTurn[]) {
+  return history
+    ?.filter((turn) => turn.text.trim())
+    .map((turn) => ({
+      role: turn.role === 'user' ? 'USER' : 'ASSISTANT',
+      content: turn.text.trim(),
+    }))
 }
 
 export async function consultTriage(
   payload: TriageConsultWithHistoryRequest,
   patientId = 1,
 ): Promise<TriageResultResponse> {
-  const res = await apiClient.post('/triage/analyze', {
+  const body: Record<string, unknown> = {
     patientId: await getCurrentPatientId(patientId),
     symptoms: payload.chiefComplaint,
     duration: payload.duration,
     supplement: payload.additionalInfo,
-  })
+  }
+  const history = mapHistory(payload.history)
+  if (payload.conversationId) body.conversationId = payload.conversationId
+  if (history?.length) body.history = history
+  if (payload.round) body.round = payload.round
+  const res = await apiClient.post('/triage/analyze', body)
   return mapAnalyzeResponse(parseApiResponse<TriageAnalyzeResponse>(res.data))
 }
 

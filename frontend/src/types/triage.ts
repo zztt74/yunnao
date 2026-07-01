@@ -6,6 +6,8 @@ export interface TriageConsultRequest {
   chiefComplaint: string // 主诉症状描述（必填）
   duration?: string // 持续时间
   additionalInfo?: string // 补充信息
+  conversationId?: string // 多轮问诊会话 ID
+  round?: number // 当前问诊轮次
 }
 
 // AI 智能问诊响应
@@ -19,6 +21,9 @@ export interface TriageResultResponse {
   safetyAdvice: string // 安全提示
   emergencyAdvice?: string // 急诊建议（HIGH/EMERGENCY 时）
   followUpQuestion?: string // AI 追问（可选）
+  conversationId?: string
+  round: number
+  isFinal: boolean
   createdAt: string // ISO 8601 +08:00
 }
 

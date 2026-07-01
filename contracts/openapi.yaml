@@ -1872,6 +1872,80 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApiResponse'
 
+  /api/examinations/patient/{patientId}/tracking:
+    get:
+      tags:
+        - 检查检验
+      summary: 患者检查检验流程追踪
+      description: 返回患者本人全状态检查申请和下一步流程引导。结果详情仍需走结果接口，且仅已审核后可见。
+      operationId: getPatientExaminationTracking
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: patientId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 检查检验流程追踪列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: './schemas/triage_encounter.yaml#/ExaminationTrackingResponse'
+        '403':
+          description: 非本人患者无权访问
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/examinations/encounter/{encounterId}/tracking:
+    get:
+      tags:
+        - 检查检验
+      summary: 按就诊查询检查检验流程追踪
+      description: 医生或管理员按就诊查看全状态检查申请和流程引导字段。
+      operationId: getEncounterExaminationTracking
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: encounterId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 检查检验流程追踪列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: './schemas/triage_encounter.yaml#/ExaminationTrackingResponse'
+        '403':
+          description: 无权访问该就诊
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
   # ============================================================
   # 就诊接口（阶段四）
   # ============================================================

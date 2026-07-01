@@ -40,6 +40,13 @@ export interface ExaminationResponse {
   reviewedAt?: string | null
   // 报告医生
   reporterName?: string | null
+  // 面向患者的流程引导
+  departmentLocation?: string | null
+  nextAction?: string | null
+  deviceName?: string | null
+  deviceLocation?: string | null
+  cancelledAt?: string | null
+  cancelReason?: string | null
   // 状态
   status: ExaminationStatus
   // 检验指标（仅检验）

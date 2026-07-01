@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { randomUUID } from 'node:crypto'
 
 const repoRoot = path.resolve(import.meta.dirname, '..', '..')
 const envPath = path.join(repoRoot, '.env')
@@ -228,6 +229,28 @@ const triage = await request(`${backendBaseUrl}/api/triage/analyze`, {
     supplement: '无胸痛，无呼吸困难',
   }),
 })
+const triageConversationId = randomUUID()
+const triageFollowUp = await request(`${backendBaseUrl}/api/triage/analyze`, {
+  method: 'POST',
+  headers: authHeaders(primaryPatient.token),
+  body: JSON.stringify({
+    patientId: primaryPatient.patient.id,
+    symptoms: '发热咳嗽后补充：夜间咳嗽加重',
+    duration: '2天',
+    supplement: '仍无胸痛，无呼吸困难',
+    conversationId: triageConversationId,
+    round: 2,
+    history: [
+      { role: 'USER', content: '发热、咳嗽、咽痛 2 天，伴轻微乏力' },
+      { role: 'ASSISTANT', content: triage.data.aiReason ?? '建议内科就诊' },
+      { role: 'USER', content: '夜间咳嗽加重' },
+    ],
+  }),
+})
+expect(triageFollowUp.data.conversationId === triageConversationId,
+  'triage follow-up should echo conversationId')
+expect(triageFollowUp.data.round === 2,
+  'triage follow-up should echo round=2')
 
 const appointment = await request(`${backendBaseUrl}/api/appointments`, {
   method: 'POST',
@@ -287,6 +310,12 @@ const examination = await request(`${backendBaseUrl}/api/examinations`, {
     itemName: '血常规',
   }),
 })
+const patientExamTrackingOrdered = await request(`${backendBaseUrl}/api/examinations/patient/${primaryPatient.patient.id}/tracking`, {
+  headers: authHeaders(primaryPatient.token),
+})
+expect(patientExamTrackingOrdered.data.some((item) =>
+  item.orderId === examination.data.id && item.status === 'ORDERED' && item.nextAction),
+'patient tracking should show ORDERED examination with nextAction')
 
 const availableDevices = await request(`${backendBaseUrl}/api/devices/department/${doctor.departmentId}/available`, {
   headers: authHeaders(doctorLogin.accessToken),
@@ -331,11 +360,23 @@ const examResult = await request(`${backendBaseUrl}/api/examinations/${examinati
     abnormalFlag: 'LOW',
   }),
 })
+const patientExamTrackingResultEntered = await request(`${backendBaseUrl}/api/examinations/patient/${primaryPatient.patient.id}/tracking`, {
+  headers: authHeaders(primaryPatient.token),
+})
+expect(patientExamTrackingResultEntered.data.some((item) =>
+  item.orderId === examination.data.id && item.status === 'RESULT_ENTERED' && item.nextAction),
+'patient tracking should show RESULT_ENTERED examination with nextAction')
 
 await request(`${backendBaseUrl}/api/examinations/${examination.data.id}/review`, {
   method: 'POST',
   headers: authHeaders(doctorLogin.accessToken),
 })
+const patientExamTrackingReviewed = await request(`${backendBaseUrl}/api/examinations/patient/${primaryPatient.patient.id}/tracking`, {
+  headers: authHeaders(primaryPatient.token),
+})
+expect(patientExamTrackingReviewed.data.some((item) =>
+  item.orderId === examination.data.id && item.status === 'REVIEWED' && item.nextAction),
+'patient tracking should show REVIEWED examination with nextAction')
 
 await request(`${backendBaseUrl}/api/encounters/${encounter.data.id}/wait-exam`, {
   method: 'POST',
@@ -411,7 +452,7 @@ const completedEncounter = await request(`${backendBaseUrl}/api/encounters/${enc
 const patientRecords = await request(`${backendBaseUrl}/api/medical-records/patient/${primaryPatient.patient.id}?page=1&size=20`, {
   headers: authHeaders(primaryPatient.token),
 })
-const patientExams = await request(`${backendBaseUrl}/api/examinations/patient/${primaryPatient.patient.id}?page=1&size=20`, {
+const patientExams = await request(`${backendBaseUrl}/api/examinations/patient/${primaryPatient.patient.id}/tracking`, {
   headers: authHeaders(primaryPatient.token),
 })
 const patientPrescriptions = await request(`${backendBaseUrl}/api/prescriptions/patient/${primaryPatient.patient.id}?page=1&size=20`, {
@@ -504,7 +545,9 @@ const result = {
     triageStatus: triage.data.aiStatus ?? 'SUCCESS',
     appointmentStatus: appointment.data.status,
     encounterStatus: completedEncounter.data.status,
-    examStatus: patientExams.data.items.find((item) => item.id === examination.data.id)?.status,
+    triageFollowUpRound: triageFollowUp.data.round,
+    examStatus: patientExams.data.find((item) => item.orderId === examination.data.id)?.status,
+    examNextAction: patientExams.data.find((item) => item.orderId === examination.data.id)?.nextAction,
     examAiStatus: examResult.data.aiStatus,
     medicalRecordStatus: confirmedMedicalRecord.data.status,
     medicalRecordSource: aiMedicalRecord.ok ? 'AI_GENERATED' : 'MANUAL_FALLBACK',

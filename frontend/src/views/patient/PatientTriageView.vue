@@ -33,6 +33,7 @@ const history = ref<TriageTurn[]>([])
 const followUpText = ref('')
 /** 已经历的总轮数（用于限制最大轮数） */
 const round = ref(0)
+const conversationId = ref<string | undefined>()
 const MAX_ROUNDS = 3
 
 const canSubmit = computed(
@@ -77,13 +78,25 @@ const hasFollowUpQuestion = computed(
   () => !!triageResult.value?.followUpQuestion,
 )
 
-async function callTriage(chiefComplaint: string) {
-  return await consultTriage({
+function createConversationId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `${Date.now().toString(16)}-${Math.random().toString(16).slice(2, 10)}`
+}
+
+async function callTriage(chiefComplaint: string, nextRound: number) {
+  const result = await consultTriage({
     chiefComplaint,
     duration: form.duration || undefined,
     additionalInfo: form.additionalInfo.trim() || undefined,
+    conversationId: conversationId.value,
     history: history.value,
+    round: nextRound,
   })
+  conversationId.value = result.conversationId ?? conversationId.value
+  round.value = result.round || nextRound
+  return result
 }
 
 async function handleSubmit() {
@@ -97,13 +110,14 @@ async function handleSubmit() {
   aiFailed.value = false
   triageResult.value = null
   history.value = []
+  conversationId.value = createConversationId()
   round.value = 1
 
   // 用户首轮输入
   history.value.push({ role: 'user', text: form.chiefComplaint.trim() })
 
   try {
-    triageResult.value = await callTriage(form.chiefComplaint.trim())
+    triageResult.value = await callTriage(form.chiefComplaint.trim(), 1)
     history.value.push({
       role: 'ai',
       text: triageResult.value.reason,
@@ -123,26 +137,25 @@ async function handleSubmit() {
 
 async function handleFollowUp() {
   if (!canAnswerFollowUp.value) return
-  if (!triageResult.value?.followUpQuestion) return
   if (round.value >= MAX_ROUNDS) {
     ElMessage.warning(`最多追问 ${MAX_ROUNDS} 轮`)
     return
   }
 
   const answer = followUpText.value.trim()
+  const nextRound = round.value + 1
   submitting.value = true
   history.value.push({ role: 'user', text: answer })
   followUpText.value = ''
 
   try {
-    const next = await callTriage(answer)
+    const next = await callTriage(answer, nextRound)
     triageResult.value = next
     history.value.push({
       role: 'ai',
       text: next.reason,
       meta: { followUpQuestion: next.followUpQuestion, reason: next.reason },
     })
-    round.value += 1
   } catch (e) {
     console.error('追问失败：', e)
     ElMessage.error('AI 追问失败，请重试')
@@ -196,6 +209,7 @@ function resetForm() {
   triageResult.value = null
   aiFailed.value = false
   history.value = []
+  conversationId.value = undefined
   followUpText.value = ''
   round.value = 0
 }
