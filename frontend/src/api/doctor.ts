@@ -45,8 +45,6 @@ function toDoctorProfile(doctor: BackendDoctorResponse): DoctorProfile {
     phone: '',
     email: '',
     specialty: doctor.specialty ?? '',
-    education: doctor.education ?? '',
-    experienceYears: doctor.experienceYears ?? 0,
     introduction: doctor.introduction ?? '',
     status: doctor.status === 'ENABLED' ? 'ACTIVE' : 'DISABLED',
     createdAt: doctor.createdAt,
@@ -79,10 +77,8 @@ export async function getDoctorProfile(): Promise<DoctorProfile> {
 export async function updateDoctorProfile(
   payload: DoctorProfileUpdateRequest,
 ): Promise<DoctorProfile> {
-  const res = await apiClient.put('/doctors/me', {
+  const res = await apiClient.put('/doctors/me/profile', {
     specialty: payload.specialty,
-    education: payload.education,
-    experienceYears: payload.experienceYears,
     introduction: payload.introduction,
   })
   return toDoctorProfile(parseApiResponse<BackendDoctorResponse>(res.data))

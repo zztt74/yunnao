@@ -4,8 +4,6 @@
 export type DoctorStatus = 'ACTIVE' | 'DISABLED'
 
 // 医生个人信息（§4.3：职称、擅长方向和简介；§2.3：密码修改适用于所有角色）
-// 注意：后端 DoctorProfileUpdateRequest 仅接受 specialty/education/experienceYears/introduction。
-// phone/email 后端 DoctorProfileUpdateRequest 不支持，保留在展示字段中以承载历史只读数据，编辑表单不再提交。
 export interface DoctorProfile {
   doctorId: number
   doctorName: string
@@ -17,10 +15,6 @@ export interface DoctorProfile {
   email: string
   // 擅长方向（§4.3）
   specialty: string
-  // 学历（§4.3，后端 B1 新增可编辑字段）
-  education: string
-  // 从业年限（§4.3，后端 B1 新增可编辑字段）
-  experienceYears: number
   // 个人简介（§4.3）
   introduction: string
   status: DoctorStatus
@@ -28,11 +22,10 @@ export interface DoctorProfile {
   updatedAt: string
 }
 
-// 医生可编辑的个人字段（对齐后端 B1 PUT /api/doctors/me 的 DoctorProfileUpdateRequest）
-// 系统管理字段（科室、职称、状态）不在内；phone/email 后端暂不支持，不在提交载荷中。
+// 医生可编辑的个人字段（系统管理字段如科室、职称、状态不在内）
 export interface DoctorProfileUpdateRequest {
+  phone: string
+  email: string
   specialty: string
-  education: string
-  experienceYears: number
   introduction: string
 }

@@ -21,18 +21,19 @@ const profile = ref<DoctorProfile | null>(null)
 const editing = ref(false)
 const saving = ref(false)
 const form = ref<DoctorProfileUpdateRequest>({
+  phone: '',
+  email: '',
   specialty: '',
-  education: '',
-  experienceYears: 0,
   introduction: '',
 })
 
-// 校验：从业年限必须为非负整数；学历为可选文本
-const experienceYearsValid = computed(() => {
-  const n = form.value.experienceYears
-  return Number.isInteger(n) && n >= 0
+// 校验
+const phoneValid = computed(() => /^1\d{10}$/.test(form.value.phone))
+const emailValid = computed(() => {
+  if (!form.value.email) return true
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.value.email)
 })
-const canSave = computed(() => experienceYearsValid.value && !saving.value)
+const canSave = computed(() => phoneValid.value && emailValid.value && !saving.value)
 
 function genderText(gender?: string): string {
   if (gender === 'MALE') return '男'
@@ -75,9 +76,9 @@ async function loadProfile() {
 function startEdit() {
   if (!profile.value) return
   form.value = {
+    phone: profile.value.phone,
+    email: profile.value.email,
     specialty: profile.value.specialty,
-    education: profile.value.education,
-    experienceYears: profile.value.experienceYears,
     introduction: profile.value.introduction,
   }
   editing.value = true
@@ -88,8 +89,12 @@ function cancelEdit() {
 }
 
 async function saveEdit() {
-  if (!experienceYearsValid.value) {
-    ElMessage.warning('从业年限需为非负整数')
+  if (!phoneValid.value) {
+    ElMessage.warning('请输入有效的手机号（11 位）')
+    return
+  }
+  if (!emailValid.value) {
+    ElMessage.warning('邮箱格式不正确')
     return
   }
   try {
@@ -186,7 +191,7 @@ onMounted(loadProfile)
       <!-- 可编辑信息 -->
       <div class="block">
         <div class="block-title">
-          专业信息
+          联系方式与专业信息
           <span class="block-sub">可自行维护</span>
           <button v-if="!editing" class="link-btn" @click="startEdit">编辑</button>
         </div>
@@ -195,12 +200,12 @@ onMounted(loadProfile)
         <template v-if="!editing">
           <div class="info-grid">
             <div class="info-item">
-              <span class="info-label">学历</span>
-              <span class="info-value">{{ profile.education || '--' }}</span>
+              <span class="info-label">联系电话</span>
+              <span class="info-value">{{ profile.phone || '--' }}</span>
             </div>
             <div class="info-item">
-              <span class="info-label">从业年限</span>
-              <span class="info-value">{{ profile.experienceYears }} 年</span>
+              <span class="info-label">电子邮箱</span>
+              <span class="info-value">{{ profile.email || '--' }}</span>
             </div>
           </div>
           <div class="field-block">
@@ -217,26 +222,23 @@ onMounted(loadProfile)
         <template v-else>
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label">学历</label>
+              <label class="form-label">
+                联系电话 <span class="required">*</span>
+              </label>
               <input
-                v-model="form.education"
+                v-model="form.phone"
                 class="form-input"
-                placeholder="如 本科 / 硕士 / 博士"
-                maxlength="64"
+                :class="{ 'input-error': !phoneValid }"
+                placeholder="11 位手机号"
               />
             </div>
             <div class="form-group">
-              <label class="form-label">
-                从业年限（年） <span class="required">*</span>
-              </label>
+              <label class="form-label">电子邮箱</label>
               <input
-                v-model.number="form.experienceYears"
-                type="number"
-                min="0"
-                step="1"
+                v-model="form.email"
                 class="form-input"
-                :class="{ 'input-error': !experienceYearsValid }"
-                placeholder="非负整数"
+                :class="{ 'input-error': !emailValid }"
+                placeholder="如 name@example.com"
               />
             </div>
           </div>
@@ -247,7 +249,6 @@ onMounted(loadProfile)
               class="form-textarea"
               rows="2"
               placeholder="如 高血压、糖尿病等慢性病诊治"
-              maxlength="255"
             />
           </div>
           <div class="form-group">
