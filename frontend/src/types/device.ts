@@ -31,6 +31,9 @@ export interface DeviceStatusHistory {
 }
 
 // 设备（§13.3）
+// 字段对齐后端 B2 DeviceCreateRequest/DeviceUpdateRequest/BackendDeviceResponse：
+// code/name/type/departmentId/location/manufacturer/model/serialNumber/notes/purchaseDate/warrantyUntil/status。
+// category 由后端 type 派生；applicableItems 保留兼容旧 UI 但不再用于提交载荷。
 export interface DeviceResponse {
   id: number
   code: string
@@ -39,8 +42,18 @@ export interface DeviceResponse {
   status: DeviceStatus
   location: string
   enabled: boolean
-  // 适配的检查检验项目（用于开立检查时推荐设备）
+  // 适配的检查检验项目（旧字段，保留用于列表展示；后端无独立字段，由 type/notes 派生）
   applicableItems: string[]
+  // 后端 B2 真实字段
+  type: string
+  departmentId: number | null
+  departmentName?: string
+  manufacturer: string
+  model: string
+  serialNumber: string
+  notes: string
+  purchaseDate: string | null
+  warrantyUntil: string | null
   createdAt: string
   updatedAt: string
 }

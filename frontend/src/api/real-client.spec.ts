@@ -16,6 +16,7 @@ import { getPatientInfo, updatePatientProfile } from '@/api/patient'
 import { getAvailableSchedules, getMyAppointments } from '@/api/appointment'
 import { consultTriage, getMyTriageRecords } from '@/api/triage'
 import { createDeviceUsage, getAllDevices } from '@/api/device'
+import { getAiInvocationLogs, getTriageRecords } from '@/api/admin'
 
 function success<T>(data: T) {
   return {
@@ -296,5 +297,186 @@ describe('real API clients', () => {
       encounterId: 9,
       notes: 'for exam',
     })
+  })
+
+  it('maps admin triage records with server-side filters and patient name lookup', async () => {
+    const triagePage = {
+      items: [
+        {
+          id: 8,
+          patientId: 42,
+          symptoms: '胸痛',
+          duration: '30分钟',
+          supplement: null,
+          aiDepartmentCode: 'DEPT_EMERGENCY',
+          aiPriority: 'EMERGENCY',
+          aiReason: '存在急诊风险',
+          aiSafetyNotice: '请立即就诊',
+          aiEmergencySuggested: true,
+          aiSymptomKeywords: null,
+          mappedDepartmentId: 7,
+          mappingStatus: 'MAPPED',
+          aiStatus: 'SUCCESS',
+          aiFailureReason: null,
+          createdAt: '2026-06-28T10:00:00',
+          updatedAt: '2026-06-28T10:00:00',
+        },
+      ],
+      page: 1,
+      pageSize: 10,
+      total: 1,
+      totalPages: 1,
+    }
+    apiClientMock.get.mockResolvedValueOnce(success(triagePage))
+
+    const patient = {
+      id: 42,
+      userId: 7,
+      name: '张三',
+      gender: 'MALE',
+      birthDate: '1990-01-01',
+      phone: '13800000000',
+      status: 'ACTIVE',
+      createdAt: '2026-06-28T10:00:00',
+      updatedAt: '2026-06-28T10:00:00',
+    }
+    apiClientMock.get.mockResolvedValueOnce(success(patient))
+
+    const result = await getTriageRecords({
+      page: 1,
+      pageSize: 10,
+      priority: 'EMERGENCY',
+      departmentId: 7,
+      startDate: '2026-06-01',
+      endDate: '2026-06-30',
+    })
+
+    expect(apiClientMock.get).toHaveBeenCalledWith('/triage', {
+      params: {
+        patientId: undefined,
+        priority: 'EMERGENCY',
+        departmentId: 7,
+        startDate: '2026-06-01',
+        endDate: '2026-06-30',
+        page: 1,
+        pageSize: 10,
+      },
+    })
+    expect(apiClientMock.get).toHaveBeenCalledWith('/patients/42')
+    expect(result.total).toBe(1)
+    expect(result.list[0]).toMatchObject({
+      id: 8,
+      patientName: '张三',
+      priority: 'EMERGENCY',
+      symptoms: '胸痛',
+    })
+  })
+
+  it('falls back to 患者 #ID when patient lookup fails for triage records', async () => {
+    const triagePage = {
+      items: [
+        {
+          id: 9,
+          patientId: 99,
+          symptoms: '头痛',
+          aiPriority: 'LOW',
+          aiStatus: 'SUCCESS',
+          mappedDepartmentId: 1,
+          createdAt: '2026-06-28T10:00:00',
+          updatedAt: '2026-06-28T10:00:00',
+        },
+      ],
+      page: 1,
+      pageSize: 10,
+      total: 1,
+      totalPages: 1,
+    }
+    apiClientMock.get.mockResolvedValueOnce(success(triagePage))
+    apiClientMock.get.mockRejectedValueOnce(new Error('403'))
+
+    const result = await getTriageRecords()
+    expect(result.list[0].patientName).toBe('患者 #99')
+  })
+
+  it('maps AI invocation logs without fake provider/model fields', async () => {
+    const invocationPage = {
+      items: [
+        {
+          id: 1,
+          capability: 'triage',
+          businessType: 'TRIAGE',
+          businessId: 8,
+          status: 'SUCCESS',
+          errorType: null,
+          errorMessage: null,
+          durationMs: 1234,
+          attemptCount: 2,
+          operatorId: 5,
+          startedAt: '2026-06-28T10:00:00',
+          finishedAt: '2026-06-28T10:00:01',
+          createdAt: '2026-06-28T10:00:00',
+          updatedAt: '2026-06-28T10:00:00',
+        },
+        {
+          id: 2,
+          capability: 'diagnosis',
+          businessType: 'ENCOUNTER',
+          businessId: 9,
+          status: 'FAILED',
+          errorType: 'model_error',
+          errorMessage: '上游模型超时',
+          durationMs: 6000,
+          attemptCount: 3,
+          operatorId: 5,
+          startedAt: '2026-06-28T11:00:00',
+          finishedAt: '2026-06-28T11:00:06',
+          createdAt: '2026-06-28T11:00:00',
+          updatedAt: '2026-06-28T11:00:00',
+        },
+      ],
+      page: 2,
+      pageSize: 20,
+      total: 15,
+      totalPages: 1,
+    }
+    apiClientMock.get.mockResolvedValueOnce(success(invocationPage))
+
+    const result = await getAiInvocationLogs({
+      capability: 'triage',
+      success: true,
+      businessType: 'TRIAGE',
+      startDate: '2026-06-01',
+      endDate: '2026-06-30',
+      page: 2,
+      pageSize: 20,
+    })
+
+    expect(apiClientMock.get).toHaveBeenCalledWith('/audit/ai/invocations', {
+      params: {
+        capability: 'triage',
+        success: true,
+        businessType: 'TRIAGE',
+        startDate: '2026-06-01',
+        endDate: '2026-06-30',
+        page: 2,
+        pageSize: 20,
+      },
+    })
+    expect(result.total).toBe(15)
+    expect(result.page).toBe(2)
+    expect(result.list[0]).toMatchObject({
+      id: 1,
+      callType: 'triage',
+      success: true,
+      status: 'SUCCESS',
+      duration: 1234,
+      attemptCount: 2,
+      operatorId: 5,
+    })
+    // 已移除 provider/model 字段
+    expect(result.list[0]).not.toHaveProperty('provider')
+    expect(result.list[0]).not.toHaveProperty('model')
+    expect(result.list[1].success).toBe(false)
+    expect(result.list[1].errorMessage).toBe('上游模型超时')
   })
 })

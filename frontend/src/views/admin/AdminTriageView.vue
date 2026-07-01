@@ -1,20 +1,37 @@
 <script setup lang="ts">
 // 分诊记录（§6）
 // 设计来源：product/11_功能需求.md §6 AI 智能问诊与分诊
-// 查看全部分诊记录，支持按优先级与关键字筛选，并展示优先级分布
-import { ref, computed, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
-import { getTriageRecords } from '@/api/admin'
-import type { AdminTriageRecord, TriagePriority } from '@/types/triage'
+// 接入后端 B4 GET /api/triage：服务端筛选 + 分页，批量补齐患者姓名
+import { ref, computed, onMounted, reactive } from 'vue'
+import { getTriageRecords, getDepartments } from '@/api/admin'
+import type { AdminTriageRecord } from '@/types/triage'
+import type { AdminTriageQuery } from '@/types/triage'
+import type { TriagePriority } from '@/types/triage'
+import type { DepartmentResponse } from '@/types/admin'
 
 // ---- 列表状态 ----
 const loading = ref(false)
 const loadError = ref('')
 const records = ref<AdminTriageRecord[]>([])
+const total = ref(0)
+const pageSize = ref(10)
+const currentPage = ref(1)
 
-// ---- 筛选 ----
-const priorityFilter = ref<'ALL' | TriagePriority>('ALL')
-const keyword = ref('')
+// ---- 科室（用于筛选下拉）----
+const departments = ref<DepartmentResponse[]>([])
+
+// ---- 筛选（服务端）----
+const filter = reactive<{
+  departmentId?: number
+  startDate: string
+  endDate: string
+  patientId?: number
+}>({
+  departmentId: undefined,
+  startDate: '',
+  endDate: '',
+  patientId: undefined,
+})
 
 // ---- 展开 ----
 const expandedId = ref<number | null>(null)
@@ -35,6 +52,8 @@ const priorityOptions: { value: 'ALL' | TriagePriority; label: string }[] = [
   { value: 'EMERGENCY', label: '急诊' },
 ]
 
+const priorityFilter = ref<'ALL' | TriagePriority>('ALL')
+
 function priorityLabel(p: string): string {
   return priorityMeta[p]?.label ?? p
 }
@@ -54,12 +73,12 @@ function formatDateTime(iso: string): string {
   }
 }
 
-// ---- 统计（基于全量数据） ----
+// ---- 当前页统计（仅基于已加载页数据，作为概览） ----
 const stats = computed(() => {
   const all = records.value
   const count = (p: TriagePriority) => all.filter((r) => r.priority === p).length
   return {
-    total: all.length,
+    total: total.value,
     low: count('LOW'),
     medium: count('MEDIUM'),
     high: count('HIGH'),
@@ -67,36 +86,34 @@ const stats = computed(() => {
   }
 })
 
-// ---- 筛选结果（按创建时间倒序） ----
-const filteredRecords = computed(() => {
-  const kw = keyword.value.trim().toLowerCase()
-  return records.value
-    .filter((r) => {
-      if (priorityFilter.value !== 'ALL' && r.priority !== priorityFilter.value) return false
-      if (!kw) return true
-      const hay = [
-        r.patientName,
-        r.symptoms,
-        r.aiSummary,
-        r.recommendedDepartmentName,
-        r.reason,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase()
-      return hay.includes(kw)
-    })
-    .slice()
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-})
+const totalPages = computed(() => Math.max(1, Math.ceil(stats.value.total / pageSize.value)))
 
 // ---- 加载 ----
+async function loadDepartments() {
+  try {
+    departments.value = await getDepartments()
+  } catch (e) {
+    console.error('[AdminTriage] 加载科室列表失败：', e)
+  }
+}
+
 async function loadRecords() {
   loading.value = true
   loadError.value = ''
   try {
-    // MOCK 返回的对象在运行时包含 patientName/symptoms/aiSummary 字段
-    records.value = await getTriageRecords()
+    const query: AdminTriageQuery = {
+      page: currentPage.value,
+      pageSize: pageSize.value,
+    }
+    if (priorityFilter.value !== 'ALL') query.priority = priorityFilter.value
+    if (filter.departmentId) query.departmentId = filter.departmentId
+    if (filter.startDate) query.startDate = filter.startDate
+    if (filter.endDate) query.endDate = filter.endDate
+    if (filter.patientId) query.patientId = filter.patientId
+    const result = await getTriageRecords(query)
+    records.value = result.list
+    total.value = result.total
+    pageSize.value = result.pageSize
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : '加载分诊记录失败'
     console.error('[AdminTriage] 加载失败：', e)
@@ -105,11 +122,34 @@ async function loadRecords() {
   }
 }
 
+function handleSearch() {
+  currentPage.value = 1
+  loadRecords()
+}
+
+function handleReset() {
+  priorityFilter.value = 'ALL'
+  filter.departmentId = undefined
+  filter.startDate = ''
+  filter.endDate = ''
+  filter.patientId = undefined
+  currentPage.value = 1
+  loadRecords()
+}
+
+function handlePageChange(page: number) {
+  currentPage.value = page
+  loadRecords()
+}
+
 function toggleExpand(id: number) {
   expandedId.value = expandedId.value === id ? null : id
 }
 
-onMounted(loadRecords)
+onMounted(() => {
+  loadDepartments()
+  loadRecords()
+})
 </script>
 
 <template>
@@ -128,19 +168,19 @@ onMounted(loadRecords)
       </div>
       <div class="stat-card">
         <div class="stat-value text-low">{{ stats.low }}</div>
-        <div class="stat-label">低优先级</div>
+        <div class="stat-label">本页低优先级</div>
       </div>
       <div class="stat-card">
         <div class="stat-value text-medium">{{ stats.medium }}</div>
-        <div class="stat-label">中优先级</div>
+        <div class="stat-label">本页中优先级</div>
       </div>
       <div class="stat-card">
         <div class="stat-value text-high">{{ stats.high }}</div>
-        <div class="stat-label">高优先级</div>
+        <div class="stat-label">本页高优先级</div>
       </div>
       <div class="stat-card">
         <div class="stat-value text-emergency">{{ stats.emergency }}</div>
-        <div class="stat-label">急诊</div>
+        <div class="stat-label">本页急诊</div>
       </div>
     </div>
 
@@ -148,22 +188,40 @@ onMounted(loadRecords)
     <div class="filter-bar">
       <div class="filter-item">
         <span class="filter-label">优先级</span>
-        <el-select v-model="priorityFilter" style="width: 160px">
-          <el-option
-            v-for="o in priorityOptions"
-            :key="o.value"
-            :label="o.label"
-            :value="o.value"
-          />
-        </el-select>
+        <select v-model="priorityFilter" class="filter-select">
+          <option v-for="o in priorityOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+        </select>
       </div>
-      <div class="filter-item filter-grow">
-        <span class="filter-label">关键字</span>
-        <el-input
-          v-model="keyword"
-          placeholder="搜索患者姓名、症状、推荐科室、推荐理由"
-          clearable
+      <div class="filter-item">
+        <span class="filter-label">科室</span>
+        <select v-model="filter.departmentId" class="filter-select">
+          <option :value="undefined">全部科室</option>
+          <option v-for="dept in departments" :key="dept.id" :value="dept.id">
+            {{ dept.name }}
+          </option>
+        </select>
+      </div>
+      <div class="filter-item">
+        <span class="filter-label">开始日期</span>
+        <input type="date" v-model="filter.startDate" class="filter-input" />
+      </div>
+      <div class="filter-item">
+        <span class="filter-label">结束日期</span>
+        <input type="date" v-model="filter.endDate" class="filter-input" />
+      </div>
+      <div class="filter-item">
+        <span class="filter-label">患者 ID</span>
+        <input
+          type="number"
+          min="1"
+          v-model.number="filter.patientId"
+          class="filter-input small"
+          placeholder="精确匹配"
         />
+      </div>
+      <div class="filter-actions">
+        <button class="primary-btn" @click="handleSearch">查询</button>
+        <button class="ghost-btn" @click="handleReset">重置</button>
       </div>
     </div>
 
@@ -181,7 +239,7 @@ onMounted(loadRecords)
     </div>
 
     <!-- 空状态 -->
-    <div v-else-if="filteredRecords.length === 0" class="state-card">
+    <div v-else-if="records.length === 0" class="state-card">
       <div class="state-title">暂无分诊记录</div>
       <div class="state-desc">尝试调整筛选条件</div>
     </div>
@@ -189,7 +247,7 @@ onMounted(loadRecords)
     <!-- 记录列表 -->
     <div v-else class="triage-list">
       <div
-        v-for="r in filteredRecords"
+        v-for="r in records"
         :key="r.id"
         class="triage-card"
         :class="[`priority-${r.priority}`, { expanded: expandedId === r.id }]"
@@ -248,6 +306,25 @@ onMounted(loadRecords)
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- 分页 -->
+    <div v-if="!loading && !loadError && records.length > 0" class="pagination">
+      <button
+        class="page-btn"
+        :disabled="currentPage <= 1"
+        @click="handlePageChange(currentPage - 1)"
+      >
+        上一页
+      </button>
+      <span class="page-info">第 {{ currentPage }} / {{ totalPages }} 页 · 共 {{ total }} 条</span>
+      <button
+        class="page-btn"
+        :disabled="currentPage >= totalPages"
+        @click="handlePageChange(currentPage + 1)"
+      >
+        下一页
+      </button>
     </div>
   </div>
 </template>
@@ -329,7 +406,7 @@ onMounted(loadRecords)
   padding: 14px 16px;
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   margin-bottom: 16px;
   flex-wrap: wrap;
 }
@@ -337,18 +414,52 @@ onMounted(loadRecords)
 .filter-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-
-.filter-grow {
-  flex: 1;
-  min-width: 240px;
+  gap: 6px;
 }
 
 .filter-label {
   font-size: 13px;
   color: #8e8e93;
   white-space: nowrap;
+}
+
+.filter-select,
+.filter-input {
+  height: 36px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 0 10px;
+  font-size: 13px;
+  color: #1a1a1a;
+  background: #ffffff;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.filter-select {
+  min-width: 130px;
+  cursor: pointer;
+}
+
+.filter-input {
+  width: 150px;
+}
+
+.filter-input.small {
+  width: 110px;
+}
+
+.filter-select:focus,
+.filter-input:focus {
+  border-color: #4facfe;
+  box-shadow: 0 0 0 3px rgb(79 172 254 / 12%);
+}
+
+.filter-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
 }
 
 /* 按钮 */
@@ -362,10 +473,28 @@ onMounted(loadRecords)
   cursor: pointer;
   transition: opacity 0.15s;
   white-space: nowrap;
+  height: 36px;
 }
 
 .primary-btn:hover {
   opacity: 0.92;
+}
+
+.ghost-btn {
+  padding: 8px 16px;
+  background: #ffffff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.15s;
+  height: 36px;
+}
+
+.ghost-btn:hover {
+  border-color: #4facfe;
+  color: #4facfe;
 }
 
 /* 状态卡片（加载/错误/空） */
@@ -594,10 +723,51 @@ onMounted(loadRecords)
   word-break: break-word;
 }
 
+/* 分页 */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+.page-btn {
+  padding: 6px 16px;
+  background: #ffffff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.page-btn:hover:not(:disabled) {
+  border-color: #4facfe;
+  color: #4facfe;
+}
+
+.page-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.page-info {
+  font-size: 13px;
+  color: #8e8e93;
+}
+
 /* 响应式 */
 @media (max-width: 768px) {
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .filter-actions {
+    margin-left: 0;
+    width: 100%;
   }
 }
 </style>

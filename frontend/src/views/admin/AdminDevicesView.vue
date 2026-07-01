@@ -2,6 +2,8 @@
 // 设备管理（§13）
 // 设计来源：product/11_功能需求.md §13、product/12_业务流程与状态机.md §13.6
 // §13.6：每次设备状态变化必须记录来源状态、目标状态、操作人、时间和原因
+// 表单字段对齐后端 B2 DeviceCreateRequest/DeviceUpdateRequest：
+//   code/name/type/departmentId/location/manufacturer/model/serialNumber/notes/purchaseDate/warrantyUntil
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -10,6 +12,7 @@ import {
   updateDevice,
   setDeviceStatus,
   getDeviceStatusHistory,
+  getDepartments,
 } from '@/api/admin'
 import type {
   DeviceResponse,
@@ -17,11 +20,19 @@ import type {
   DeviceStatusHistory,
   DeviceCategory,
 } from '@/types/device'
+import type { DepartmentResponse } from '@/types/admin'
 
 // ---- 列表状态 ----
 const loading = ref(false)
 const loadError = ref('')
 const devices = ref<DeviceResponse[]>([])
+
+// ---- 科室列表（用于表单下拉与列表展示科室名）----
+const departments = ref<DepartmentResponse[]>([])
+const departmentNameById = (id: number | null | undefined): string => {
+  if (id === null || id === undefined) return ''
+  return departments.value.find((d) => d.id === id)?.name ?? ''
+}
 
 // ---- 新增/编辑表单 ----
 const showForm = ref(false)
@@ -32,9 +43,14 @@ const formModel = reactive({
   name: '',
   code: '',
   category: 'EXAMINATION' as DeviceCategory,
+  departmentId: null as number | null,
   location: '',
-  applicableItems: '',
-  enabled: true,
+  manufacturer: '',
+  model: '',
+  serialNumber: '',
+  notes: '',
+  purchaseDate: '',
+  warrantyUntil: '',
 })
 
 // ---- 状态变更 ----
@@ -99,12 +115,19 @@ function formatDateTime(iso: string): string {
   }
 }
 
+function formatDate(iso: string | null | undefined): string {
+  if (!iso) return '--'
+  return iso.slice(0, 10)
+}
+
 // ---- 加载列表 ----
 async function loadDevices() {
   loading.value = true
   loadError.value = ''
   try {
-    devices.value = await getAdminDevices()
+    const [list, depts] = await Promise.all([getAdminDevices(), getDepartments()])
+    devices.value = list
+    departments.value = depts
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : '加载设备列表失败'
     console.error('[AdminDevices] 加载失败：', e)
@@ -118,9 +141,14 @@ function resetForm() {
   formModel.name = ''
   formModel.code = ''
   formModel.category = 'EXAMINATION'
+  formModel.departmentId = null
   formModel.location = ''
-  formModel.applicableItems = ''
-  formModel.enabled = true
+  formModel.manufacturer = ''
+  formModel.model = ''
+  formModel.serialNumber = ''
+  formModel.notes = ''
+  formModel.purchaseDate = ''
+  formModel.warrantyUntil = ''
   editingId.value = null
 }
 
@@ -134,11 +162,16 @@ function openEdit(device: DeviceResponse) {
   formMode.value = 'edit'
   editingId.value = device.id
   formModel.name = device.name
-  formModel.code = device.code
+  formModel.code = device.code // 编辑时只读展示
   formModel.category = device.category
+  formModel.departmentId = device.departmentId
   formModel.location = device.location
-  formModel.applicableItems = device.applicableItems.join(', ')
-  formModel.enabled = device.enabled
+  formModel.manufacturer = device.manufacturer
+  formModel.model = device.model
+  formModel.serialNumber = device.serialNumber
+  formModel.notes = device.notes
+  formModel.purchaseDate = device.purchaseDate ?? ''
+  formModel.warrantyUntil = device.warrantyUntil ?? ''
   showForm.value = true
 }
 
@@ -153,21 +186,24 @@ async function submitForm() {
     ElMessage.error('请输入设备名称')
     return
   }
-  if (!code) {
+  if (formMode.value === 'create' && !code) {
     ElMessage.error('请输入设备编码')
     return
   }
-  const applicableItems = formModel.applicableItems
-    .split(/[,，]/)
-    .map((s) => s.trim())
-    .filter(Boolean)
   const payload: Partial<DeviceResponse> = {
     name,
-    code,
     category: formModel.category,
+    departmentId: formModel.departmentId,
     location: formModel.location.trim(),
-    applicableItems,
-    enabled: formModel.enabled,
+    manufacturer: formModel.manufacturer.trim(),
+    model: formModel.model.trim(),
+    serialNumber: formModel.serialNumber.trim(),
+    notes: formModel.notes.trim(),
+    purchaseDate: formModel.purchaseDate || null,
+    warrantyUntil: formModel.warrantyUntil || null,
+  }
+  if (formMode.value === 'create') {
+    payload.code = code
   }
   formSaving.value = true
   try {
@@ -308,19 +344,32 @@ onMounted(loadDevices)
             <span class="meta-value">{{ categoryLabel(device.category) }}</span>
           </div>
           <div class="meta-row">
+            <span class="meta-label">所属科室</span>
+            <span class="meta-value">{{ departmentNameById(device.departmentId) || '--' }}</span>
+          </div>
+          <div class="meta-row">
             <span class="meta-label">位置</span>
             <span class="meta-value">{{ device.location || '--' }}</span>
           </div>
-          <div class="meta-row items-row">
-            <span class="meta-label">适用项目</span>
-            <div class="items-tags">
-              <span
-                v-for="item in device.applicableItems"
-                :key="item"
-                class="item-tag"
-              >{{ item }}</span>
-              <span v-if="device.applicableItems.length === 0" class="meta-value">--</span>
-            </div>
+          <div class="meta-row">
+            <span class="meta-label">厂商/型号</span>
+            <span class="meta-value">
+              {{ [device.manufacturer, device.model].filter(Boolean).join(' / ') || '--' }}
+            </span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-label">序列号</span>
+            <span class="meta-value">{{ device.serialNumber || '--' }}</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-label">采购/保修至</span>
+            <span class="meta-value">
+              {{ formatDate(device.purchaseDate) }} / {{ formatDate(device.warrantyUntil) }}
+            </span>
+          </div>
+          <div v-if="device.notes" class="meta-row">
+            <span class="meta-label">备注</span>
+            <span class="meta-value">{{ device.notes }}</span>
           </div>
         </div>
 
@@ -336,16 +385,21 @@ onMounted(loadDevices)
     <el-dialog
       v-model="showForm"
       :title="formMode === 'create' ? '新增设备' : '编辑设备'"
-      width="520px"
+      width="560px"
       :close-on-click-modal="false"
       append-to-body
     >
-      <el-form label-width="88px" label-position="right">
+      <el-form label-width="92px" label-position="right">
         <el-form-item label="设备名称" required>
-          <el-input v-model="formModel.name" placeholder="请输入设备名称" maxlength="60" />
+          <el-input v-model="formModel.name" placeholder="请输入设备名称" maxlength="128" />
         </el-form-item>
         <el-form-item label="设备编码" required>
-          <el-input v-model="formModel.code" placeholder="请输入设备编码" maxlength="40" />
+          <el-input
+            v-model="formModel.code"
+            placeholder="请输入设备编码"
+            maxlength="32"
+            :disabled="formMode === 'edit'"
+          />
         </el-form-item>
         <el-form-item label="设备分类" required>
           <el-select v-model="formModel.category" placeholder="请选择分类" style="width: 100%">
@@ -357,19 +411,60 @@ onMounted(loadDevices)
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="设备位置">
-          <el-input v-model="formModel.location" placeholder="请输入设备所在位置" maxlength="80" />
+        <el-form-item label="所属科室">
+          <el-select
+            v-model="formModel.departmentId"
+            placeholder="选择所属科室（可不选）"
+            clearable
+            style="width: 100%"
+          >
+            <el-option
+              v-for="dept in departments"
+              :key="dept.id"
+              :label="dept.name"
+              :value="dept.id"
+            />
+          </el-select>
         </el-form-item>
-        <el-form-item label="适用项目">
-          <el-input
-            v-model="formModel.applicableItems"
-            type="textarea"
-            :rows="2"
-            placeholder="多个项目用逗号分隔，如：胸部 X 光, 腹部 B 超"
+        <el-form-item label="设备位置">
+          <el-input v-model="formModel.location" placeholder="请输入设备所在位置" maxlength="128" />
+        </el-form-item>
+        <el-form-item label="厂商">
+          <el-input v-model="formModel.manufacturer" placeholder="如 GE、飞利浦" maxlength="128" />
+        </el-form-item>
+        <el-form-item label="型号">
+          <el-input v-model="formModel.model" placeholder="设备型号" maxlength="64" />
+        </el-form-item>
+        <el-form-item label="序列号">
+          <el-input v-model="formModel.serialNumber" placeholder="设备序列号" maxlength="64" />
+        </el-form-item>
+        <el-form-item label="采购日期">
+          <el-date-picker
+            v-model="formModel.purchaseDate"
+            type="date"
+            value-format="YYYY-MM-DD"
+            placeholder="选择采购日期"
+            style="width: 100%"
           />
         </el-form-item>
-        <el-form-item label="启用">
-          <el-switch v-model="formModel.enabled" />
+        <el-form-item label="保修至">
+          <el-date-picker
+            v-model="formModel.warrantyUntil"
+            type="date"
+            value-format="YYYY-MM-DD"
+            placeholder="选择保修截止日期"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input
+            v-model="formModel.notes"
+            type="textarea"
+            :rows="2"
+            placeholder="其他备注信息"
+            maxlength="512"
+            show-word-limit
+          />
         </el-form-item>
       </el-form>
       <template #footer>

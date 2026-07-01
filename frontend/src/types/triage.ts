@@ -28,3 +28,15 @@ export interface AdminTriageRecord extends TriageResultResponse {
   symptoms: string
   aiSummary: string
 }
+
+// 对齐后端 B4 GET /api/triage 查询参数：
+// patientId/priority/departmentId/startDate/endDate/page/pageSize
+export interface AdminTriageQuery {
+  patientId?: number
+  priority?: TriagePriority
+  departmentId?: number
+  startDate?: string // ISO yyyy-MM-dd
+  endDate?: string
+  page?: number
+  pageSize?: number
+}

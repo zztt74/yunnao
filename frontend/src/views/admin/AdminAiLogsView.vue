@@ -1,18 +1,22 @@
 <script setup lang="ts">
 // AI 调用记录（§16.3）
 // 设计来源：product/11_功能需求.md §16
-// 只读列表页：展示 AI 服务调用记录，支持按调用类型/结果/关键字筛选，含汇总统计
-import { ref, computed, onMounted } from 'vue'
+// 接入后端 B5 GET /api/audit/ai/invocations：服务端筛选 + 分页
+// 后端不返回 provider/model（实体不存储），此处不展示这两列。
+import { ref, computed, reactive, onMounted } from 'vue'
 import { getAiInvocationLogs } from '@/api/admin'
-import type { AiInvocationLog } from '@/types/admin'
+import type { AiInvocationLog, AiInvocationLogQuery } from '@/types/admin'
 
 const loading = ref(true)
 const loadError = ref('')
 const logs = ref<AiInvocationLog[]>([])
+const total = ref(0)
+const currentPage = ref(1)
+const pageSize = ref(10)
 
-// 调用类型筛选项：value 为原始 callType，label 为中文
-const callTypeOptions: Array<{ value: string; label: string }> = [
-  { value: 'ALL', label: '全部' },
+// 调用类型筛选项：value 为原始 capability
+const capabilityOptions: Array<{ value: string; label: string }> = [
+  { value: '', label: '全部' },
   { value: 'triage', label: '分诊' },
   { value: 'diagnosis', label: '诊断' },
   { value: 'medical-record', label: '病历生成' },
@@ -20,7 +24,7 @@ const callTypeOptions: Array<{ value: string; label: string }> = [
   { value: 'examination', label: '检查解读' },
 ]
 
-const callTypeLabels: Record<string, string> = {
+const capabilityLabels: Record<string, string> = {
   triage: '分诊',
   diagnosis: '诊断',
   'medical-record': '病历生成',
@@ -28,15 +32,24 @@ const callTypeLabels: Record<string, string> = {
   examination: '检查解读',
 }
 
-const SLOW_THRESHOLD = 5000 // 毫秒，超过则标橙
+const SLOW_THRESHOLD = 5000 // 毫秒
 
-const callTypeFilter = ref<string>('ALL')
-type ResultFilter = 'ALL' | 'SUCCESS' | 'FAIL'
-const resultFilter = ref<ResultFilter>('ALL')
-const keyword = ref('')
+const filter = reactive<{
+  capability: string
+  result: 'ALL' | 'SUCCESS' | 'FAIL'
+  businessType: string
+  startDate: string
+  endDate: string
+}>({
+  capability: '',
+  result: 'ALL',
+  businessType: '',
+  startDate: '',
+  endDate: '',
+})
 
-function callTypeText(callType: string): string {
-  return callTypeLabels[callType] ?? callType
+function capabilityText(capability: string): string {
+  return capabilityLabels[capability] ?? capability
 }
 
 function errorTypeText(type: string): string {
@@ -71,53 +84,47 @@ function businessIdText(id: number | null): string {
   return id === null || id === undefined ? '--' : String(id)
 }
 
+function attemptText(count: number | null): string {
+  return count === null || count === undefined ? '--' : String(count)
+}
+
 function isSlow(duration: number): boolean {
   return duration > SLOW_THRESHOLD
 }
 
-const filteredLogs = computed(() => {
-  let list = logs.value
-  if (callTypeFilter.value !== 'ALL') {
-    list = list.filter((l) => l.callType === callTypeFilter.value)
-  }
-  if (resultFilter.value === 'SUCCESS') {
-    list = list.filter((l) => l.success)
-  } else if (resultFilter.value === 'FAIL') {
-    list = list.filter((l) => !l.success)
-  }
-  const kw = keyword.value.trim().toLowerCase()
-  if (kw) {
-    list = list.filter(
-      (l) =>
-        l.provider.toLowerCase().includes(kw) ||
-        l.model.toLowerCase().includes(kw) ||
-        l.businessType.toLowerCase().includes(kw) ||
-        l.callType.toLowerCase().includes(kw) ||
-        (l.errorMessage ?? '').toLowerCase().includes(kw),
-    )
-  }
-  return [...list].sort(
-    (a, b) => new Date(b.calledAt).getTime() - new Date(a.calledAt).getTime(),
-  )
-})
+const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 
-// 汇总统计（基于全量已加载数据，提供整体概览）
+// 汇总统计（基于当前已加载页，仅作概览）
 const stats = computed(() => {
-  const total = logs.value.length
-  const successCount = logs.value.filter((l) => l.success).length
-  const successRate = total === 0 ? 0 : Math.round((successCount / total) * 1000) / 10
+  const list = logs.value
+  const visibleTotal = list.length
+  const successCount = list.filter((l) => l.success).length
+  const successRate = visibleTotal === 0 ? 0 : Math.round((successCount / visibleTotal) * 1000) / 10
   const avgDuration =
-    total === 0
+    visibleTotal === 0
       ? 0
-      : Math.round(logs.value.reduce((sum, l) => sum + l.duration, 0) / total)
-  return { total, successRate, avgDuration }
+      : Math.round(list.reduce((sum, l) => sum + l.duration, 0) / visibleTotal)
+  return { total: total.value, visibleTotal, successRate, avgDuration }
 })
 
 async function loadLogs() {
   loading.value = true
   loadError.value = ''
   try {
-    logs.value = await getAiInvocationLogs()
+    const query: AiInvocationLogQuery = {
+      page: currentPage.value,
+      pageSize: pageSize.value,
+    }
+    if (filter.capability) query.capability = filter.capability
+    if (filter.result === 'SUCCESS') query.success = true
+    else if (filter.result === 'FAIL') query.success = false
+    if (filter.businessType.trim()) query.businessType = filter.businessType.trim()
+    if (filter.startDate) query.startDate = filter.startDate
+    if (filter.endDate) query.endDate = filter.endDate
+    const result = await getAiInvocationLogs(query)
+    logs.value = result.list
+    total.value = result.total
+    pageSize.value = result.pageSize
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : '加载 AI 调用记录失败'
     console.error('[AdminAiLogs] 加载失败：', e)
@@ -126,10 +133,24 @@ async function loadLogs() {
   }
 }
 
+function handleSearch() {
+  currentPage.value = 1
+  loadLogs()
+}
+
 function resetFilter() {
-  callTypeFilter.value = 'ALL'
-  resultFilter.value = 'ALL'
-  keyword.value = ''
+  filter.capability = ''
+  filter.result = 'ALL'
+  filter.businessType = ''
+  filter.startDate = ''
+  filter.endDate = ''
+  currentPage.value = 1
+  loadLogs()
+}
+
+function handlePageChange(page: number) {
+  currentPage.value = page
+  loadLogs()
 }
 
 onMounted(loadLogs)
@@ -149,11 +170,11 @@ onMounted(loadLogs)
         <div class="stat-value">{{ stats.total }}</div>
       </div>
       <div class="stat-card stat-success">
-        <div class="stat-label">成功率</div>
+        <div class="stat-label">本页成功率</div>
         <div class="stat-value">{{ stats.successRate }}%</div>
       </div>
       <div class="stat-card stat-duration">
-        <div class="stat-label">平均耗时</div>
+        <div class="stat-label">本页平均耗时</div>
         <div class="stat-value">{{ stats.avgDuration }}<span class="stat-unit">ms</span></div>
       </div>
     </div>
@@ -162,35 +183,39 @@ onMounted(loadLogs)
     <div class="filter-card">
       <div class="filter-item">
         <label class="filter-label">调用类型</label>
-        <select v-model="callTypeFilter" class="filter-select">
-          <option
-            v-for="opt in callTypeOptions"
-            :key="opt.value"
-            :value="opt.value"
-          >
+        <select v-model="filter.capability" class="filter-select">
+          <option v-for="opt in capabilityOptions" :key="opt.value" :value="opt.value">
             {{ opt.label }}
           </option>
         </select>
       </div>
       <div class="filter-item">
         <label class="filter-label">调用结果</label>
-        <select v-model="resultFilter" class="filter-select">
+        <select v-model="filter.result" class="filter-select">
           <option value="ALL">全部</option>
           <option value="SUCCESS">成功</option>
           <option value="FAIL">失败</option>
         </select>
       </div>
       <div class="filter-item filter-item-grow">
-        <label class="filter-label">关键字搜索</label>
+        <label class="filter-label">业务类型</label>
         <input
-          v-model="keyword"
+          v-model="filter.businessType"
           type="text"
           class="filter-input"
-          placeholder="供应商 / 模型 / 业务类型 / 错误信息"
+          placeholder="精确匹配业务类型"
         />
       </div>
+      <div class="filter-item">
+        <label class="filter-label">开始日期</label>
+        <input type="date" v-model="filter.startDate" class="filter-input" />
+      </div>
+      <div class="filter-item">
+        <label class="filter-label">结束日期</label>
+        <input type="date" v-model="filter.endDate" class="filter-input" />
+      </div>
+      <button class="primary-btn" @click="handleSearch">查询</button>
       <button class="ghost-btn" @click="resetFilter">重置</button>
-      <button class="primary-btn" @click="loadLogs">刷新</button>
     </div>
 
     <!-- 加载中 -->
@@ -207,24 +232,23 @@ onMounted(loadLogs)
     </div>
 
     <!-- 空状态 -->
-    <div v-else-if="filteredLogs.length === 0" class="state-card">
+    <div v-else-if="logs.length === 0" class="state-card">
       <div class="state-title">暂无记录</div>
       <div class="state-desc">没有符合筛选条件的 AI 调用记录</div>
     </div>
 
     <!-- 日志表格 -->
     <div v-else class="table-card">
-      <div class="table-meta">共 {{ filteredLogs.length }} 条记录</div>
+      <div class="table-meta">共 {{ total }} 条记录 · 当前第 {{ currentPage }} / {{ totalPages }} 页</div>
       <div class="table-scroll">
         <table class="log-table">
           <thead>
             <tr>
               <th>调用时间</th>
               <th>调用类型</th>
-              <th>供应商</th>
-              <th>模型</th>
               <th>业务类型</th>
               <th>业务 ID</th>
+              <th>尝试次数</th>
               <th>耗时</th>
               <th>结果</th>
               <th>错误类型</th>
@@ -232,15 +256,14 @@ onMounted(loadLogs)
             </tr>
           </thead>
           <tbody>
-            <tr v-for="log in filteredLogs" :key="log.id">
+            <tr v-for="log in logs" :key="log.id">
               <td class="cell-time">{{ formatDateTime(log.calledAt) }}</td>
               <td>
-                <span class="badge badge-type">{{ callTypeText(log.callType) }}</span>
+                <span class="badge badge-type">{{ capabilityText(log.callType) }}</span>
               </td>
-              <td class="cell-mono">{{ log.provider }}</td>
-              <td class="cell-mono">{{ log.model }}</td>
-              <td class="cell-target-type">{{ log.businessType }}</td>
+              <td class="cell-target-type">{{ log.businessType || '--' }}</td>
               <td class="cell-target-id">{{ businessIdText(log.businessId) }}</td>
+              <td class="cell-target-id">{{ attemptText(log.attemptCount) }}</td>
               <td>
                 <span
                   class="duration"
@@ -265,6 +288,25 @@ onMounted(loadLogs)
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- 分页 -->
+      <div class="pagination">
+        <button
+          class="page-btn"
+          :disabled="currentPage <= 1"
+          @click="handlePageChange(currentPage - 1)"
+        >
+          上一页
+        </button>
+        <span class="page-info">第 {{ currentPage }} / {{ totalPages }} 页</span>
+        <button
+          class="page-btn"
+          :disabled="currentPage >= totalPages"
+          @click="handlePageChange(currentPage + 1)"
+        >
+          下一页
+        </button>
       </div>
     </div>
   </div>
@@ -357,7 +399,7 @@ onMounted(loadLogs)
 
 .filter-item-grow {
   flex: 1;
-  min-width: 200px;
+  min-width: 180px;
 }
 
 .filter-label {
@@ -375,27 +417,24 @@ onMounted(loadLogs)
   font-size: 13px;
   color: #1a1a1a;
   outline: none;
-  background: #f8f9fa;
+  background: #ffffff;
+  box-sizing: border-box;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .filter-select {
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238e8e93' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 12px center;
-  padding-right: 30px;
   min-width: 130px;
+  cursor: pointer;
+}
+
+.filter-input {
+  width: 150px;
 }
 
 .filter-select:focus,
 .filter-input:focus {
   border-color: #4facfe;
   box-shadow: 0 0 0 3px rgb(79 172 254 / 12%);
-  background-color: #ffffff;
-}
-
-.filter-input {
-  width: 100%;
 }
 
 .primary-btn {
@@ -540,13 +579,6 @@ onMounted(loadLogs)
   color: #475569;
 }
 
-.cell-mono {
-  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-  font-size: 12px;
-  color: #475569;
-  white-space: nowrap;
-}
-
 .cell-target-type {
   color: #475569;
   white-space: nowrap;
@@ -619,5 +651,41 @@ onMounted(loadLogs)
   background: #fff1f0;
   color: #cf1322;
   border: 1px solid #ffccc7;
+}
+
+/* ============ 分页 ============ */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 14px 16px;
+  flex-wrap: wrap;
+}
+
+.page-btn {
+  padding: 6px 16px;
+  background: #ffffff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.page-btn:hover:not(:disabled) {
+  border-color: #4facfe;
+  color: #4facfe;
+}
+
+.page-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.page-info {
+  font-size: 13px;
+  color: #8e8e93;
 }
 </style>
