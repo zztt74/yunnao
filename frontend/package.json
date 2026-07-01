@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "type-check": "vue-tsc -b --noEmit",
     "build": "vue-tsc -b && vite build"
   },
@@ -20,6 +22,8 @@
   "devDependencies": {
     "@types/node": "24.10.1",
     "@vitejs/plugin-vue": "6.0.7",
+    "@vitest/coverage-v8": "^4.1.9",
+    "happy-dom": "^20.10.6",
     "typescript": "5.9.3",
     "vite": "8.0.16",
     "vitest": "4.1.9",
