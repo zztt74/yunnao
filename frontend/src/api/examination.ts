@@ -55,9 +55,13 @@ export async function getMyExaminations(params?: {
 }): Promise<ExaminationResponse[]> {
   const patient = await getPatientInfo()
   const res = await apiClient.get(`/examinations/patient/${patient.id}`)
+  // 修复 UF-02：患者端展示全状态（不仅 REVIEWED），让患者能追踪检查流程
+  // 之前在 API client 过滤了 REVIEWED，导致患者看不到 ORDERED/IN_PROGRESS/RESULT_ENTERED
+  // 权限与字段范围仍由后端控制（后端 DTO 已具备各状态字段）
+  // 状态/类型筛选统一在 View 层做客户端过滤（与原 typeFilter 行为一致），
+  // 日期范围继续在 API client 层做（避免拉回大列表）
   let list = parseApiResponse<PageResponse<BackendExaminationOrder>>(res.data).items
     .map((order) => mapExamination(order))
-    .filter((item) => item.status === 'REVIEWED')
   if (params?.type) {
     list = list.filter((item) => item.type === params.type)
   }

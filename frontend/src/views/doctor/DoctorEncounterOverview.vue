@@ -43,7 +43,7 @@ const hasDraftPrescription = computed(() => prescription.value?.status === 'DRAF
 const checklist = computed(() => [
   {
     label: '已确认正式病历',
-    done: hasConfirmedMedicalRecord.value,
+    state: hasConfirmedMedicalRecord.value ? 'done' as const : 'pending' as const,
     hint: medicalRecord.value
       ? medicalRecord.value.status === 'CONFIRMED'
         ? '病历已确认'
@@ -52,32 +52,55 @@ const checklist = computed(() => [
   },
   {
     label: '已下达医生最终诊断',
-    done: hasFinalDiagnosis.value,
+    state: hasFinalDiagnosis.value ? 'done' as const : 'pending' as const,
     hint: hasFinalDiagnosis.value
       ? `共 ${diagnoses.value.filter((diagnosis) => diagnosis.type === 'FINAL').length} 条最终诊断`
       : '至少需要一条医生最终诊断',
   },
   {
-    label: '检查检验已全部审核',
-    done: examinations.value.length > 0 ? !hasPendingExams.value : true,
+    label: '检查检验处理状态',
+    // 空列表 = 本次未开具 = 不适用；其它情况按是否有 pending 项判定
+    state: examinations.value.length === 0
+      ? ('notApplicable' as const)
+      : hasPendingExams.value
+        ? ('pending' as const)
+        : ('done' as const),
     hint: examinations.value.length === 0
-      ? '未开具检查检验'
+      ? '本次未开具检查检验'
       : hasPendingExams.value
         ? `${examinations.value.filter((exam) => exam.status !== 'REVIEWED' && exam.status !== 'CANCELLED').length} 项待处理`
         : '全部已审核或已取消',
   },
   {
-    label: '处方已确认或作废',
-    done: !hasDraftPrescription.value,
+    label: '处方处理状态',
+    // 处方不存在 = 本次未开具 = 不适用；存在时按是否有草稿判定
+    state: prescription.value === null
+      ? ('notApplicable' as const)
+      : hasDraftPrescription.value
+        ? ('pending' as const)
+        : ('done' as const),
     hint: prescription.value
       ? prescription.value.status === 'DRAFT'
         ? '存在未确认的处方草稿'
         : `处方状态：${prescription.value.status}`
-      : '未开具处方',
+      : '本次未开具处方',
   },
 ])
 
-const allDone = computed(() => checklist.value.every((item) => item.done))
+const allDone = computed(() =>
+  checklist.value.every(
+    (item) => item.state === 'done' || item.state === 'notApplicable',
+  ),
+)
+
+const STATE_META: Record<
+  'done' | 'pending' | 'notApplicable',
+  { icon: string; cls: string }
+> = {
+  done: { icon: '✓', cls: 'state-done' },
+  pending: { icon: '•', cls: 'state-pending' },
+  notApplicable: { icon: '–', cls: 'state-na' },
+}
 
 function saveNotes() {
   encounterStore.setConsultationNotes({ ...notes.value })
@@ -170,9 +193,9 @@ onMounted(loadChecklist)
           v-for="item in checklist"
           :key="item.label"
           class="check-item"
-          :class="{ done: item.done }"
+          :class="STATE_META[item.state].cls"
         >
-          <span class="check-icon">{{ item.done ? '✓' : '•' }}</span>
+          <span class="check-icon">{{ STATE_META[item.state].icon }}</span>
           <div class="check-body">
             <div class="check-label">{{ item.label }}</div>
             <div class="check-hint">{{ item.hint }}</div>

@@ -26,6 +26,7 @@ import type {
   LoginLog,
   OperationLog,
   AiInvocationLog,
+  AiInvocationAttempt,
   PageResult,
 } from '@/types/admin'
 import type {
@@ -203,7 +204,28 @@ interface AIInvocationResponse {
   errorType: string | null
   errorMessage: string | null
   durationMs: number | null
+  attemptCount: number | null
+  operatorId: number | null
   startedAt: string
+  finishedAt: string | null
+}
+
+interface AIInvocationAttemptResponse {
+  id: number
+  invocationId: number
+  provider: string
+  model: string | null
+  promptVersion: string | null
+  status: string
+  httpStatus: number | null
+  errorType: string | null
+  errorMessage: string | null
+  requestSummary: string | null
+  responseSummary: string | null
+  durationMs: number | null
+  attemptIndex: number
+  startedAt: string
+  finishedAt: string | null
 }
 
 function emptyPage<T>(query?: { page?: number; pageSize?: number }): PageResult<T> {
@@ -366,18 +388,17 @@ function mapBackendUser(user: BackendAdminUserResponse): UserManageResponse {
   }
 }
 
-function backendDeviceType(device: Partial<DeviceResponse>): string {
-  if (device.category === 'LABORATORY') return 'LABORATORY'
-  if (device.category === 'MONITOR') return 'MONITOR'
-  if (device.category === 'OTHER') return 'OTHER'
-  return device.applicableItems?.[0] ?? device.category ?? 'EXAMINATION'
+// 后端 /api/devices 的 type 字段与前端 category 是同一字符串枚举；
+// 值为空时默认 EXAMINATION，行为与原 backendDeviceType 一致。
+function backendDeviceType(category: string | undefined): string {
+  return category ?? 'EXAMINATION'
 }
 
 function backendCreateDevicePayload(payload: Partial<DeviceResponse>) {
   return {
     code: payload.code,
     name: payload.name,
-    type: backendDeviceType(payload),
+    type: backendDeviceType(payload.category),
     location: payload.location,
     notes: payload.applicableItems?.join(', '),
   }
@@ -386,7 +407,7 @@ function backendCreateDevicePayload(payload: Partial<DeviceResponse>) {
 function backendUpdateDevicePayload(payload: Partial<DeviceResponse>) {
   return {
     name: payload.name,
-    type: backendDeviceType(payload),
+    type: backendDeviceType(payload.category),
     location: payload.location,
     notes: payload.applicableItems?.join(', '),
   }
@@ -413,7 +434,8 @@ function mapAiInvocation(log: AIInvocationResponse): AiInvocationLog {
   return {
     id: log.id,
     callType: log.capability,
-    provider: 'backend-ai-provider',
+    // 后端 DTO 当前不下发 provider/model（只统计在 attempts 里），前端用占位符并降级显示 '--'
+    provider: '',
     model: '',
     businessType: log.businessType,
     businessId: log.businessId,
@@ -421,7 +443,31 @@ function mapAiInvocation(log: AIInvocationResponse): AiInvocationLog {
     duration: log.durationMs ?? 0,
     errorType: log.errorType,
     errorMessage: log.errorMessage,
+    attemptCount: log.attemptCount ?? 0,
+    operatorId: log.operatorId,
     calledAt: log.startedAt,
+  }
+}
+
+function mapAiInvocationAttempt(
+  attempt: AIInvocationAttemptResponse,
+): AiInvocationAttempt {
+  return {
+    id: attempt.id,
+    invocationId: attempt.invocationId,
+    provider: attempt.provider,
+    model: attempt.model ?? '',
+    promptVersion: attempt.promptVersion,
+    status: attempt.status,
+    httpStatus: attempt.httpStatus,
+    errorType: attempt.errorType,
+    errorMessage: attempt.errorMessage,
+    requestSummary: attempt.requestSummary,
+    responseSummary: attempt.responseSummary,
+    duration: attempt.durationMs,
+    attemptIndex: attempt.attemptIndex,
+    startedAt: attempt.startedAt,
+    finishedAt: attempt.finishedAt,
   }
 }
 
@@ -784,11 +830,22 @@ export async function getDeviceStatusHistory(
   return getRealDeviceStatusHistory(id)
 }
 
-export async function getTriageRecords(): Promise<AdminTriageRecord[]> {
+export async function getTriageRecords(query?: {
+  page?: number
+  pageSize?: number
+}): Promise<PageResult<AdminTriageRecord>> {
+  const page = query?.page ?? 1
+  const pageSize = query?.pageSize ?? 20
   const res = await apiClient.get('/triage', {
-    params: { page: 1, size: 100 },
+    params: { page, size: pageSize },
   })
-  return parseApiResponse<PageResponse<BackendTriageRecordResponse>>(res.data).items.map(mapTriageRecord)
+  const pageRes = parseApiResponse<PageResponse<BackendTriageRecordResponse>>(res.data)
+  return {
+    list: pageRes.items.map(mapTriageRecord),
+    total: pageRes.total,
+    page: pageRes.page,
+    pageSize: pageRes.pageSize,
+  }
 }
 
 export async function getStatisticsSummary(): Promise<StatisticsSummary> {
@@ -917,9 +974,45 @@ export async function getOperationLogs(): Promise<OperationLog[]> {
   return parseApiResponse<PageResponse<AuditLogResponse>>(res.data).items.map(mapAuditLog)
 }
 
-export async function getAiInvocationLogs(): Promise<AiInvocationLog[]> {
+export async function getAiInvocationLogs(query?: {
+  page?: number
+  pageSize?: number
+  capability?: string
+  businessType?: string
+  // 后端参数为 success: Boolean（true=仅 SUCCESS；false=非 SUCCESS，含 FAILED/PENDING；不传=全部）
+  success?: boolean
+  startDate?: string
+  endDate?: string
+}): Promise<PageResult<AiInvocationLog>> {
+  const page = query?.page ?? 1
+  const pageSize = query?.pageSize ?? 20
   const res = await apiClient.get('/audit/ai/invocations', {
-    params: { page: 1, size: 100 },
+    params: {
+      page,
+      size: pageSize,
+      capability: query?.capability,
+      businessType: query?.businessType,
+      success: query?.success,
+      startDate: query?.startDate,
+      endDate: query?.endDate,
+    },
   })
-  return parseApiResponse<PageResponse<AIInvocationResponse>>(res.data).items.map(mapAiInvocation)
+  const pageRes = parseApiResponse<PageResponse<AIInvocationResponse>>(res.data)
+  return {
+    list: pageRes.items.map(mapAiInvocation),
+    total: pageRes.total,
+    page: pageRes.page,
+    pageSize: pageRes.pageSize,
+  }
+}
+
+export async function getAiInvocationAttempts(
+  invocationId: number,
+): Promise<AiInvocationAttempt[]> {
+  const res = await apiClient.get(
+    `/audit/ai/invocations/${invocationId}/attempts`,
+  )
+  return parseApiResponse<AIInvocationAttemptResponse[]>(res.data).map(
+    mapAiInvocationAttempt,
+  )
 }

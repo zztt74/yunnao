@@ -3,13 +3,14 @@
 // 设计来源：product/11_功能需求.md §4.3、§2.3、roles/12_前端开发AI任务书.md §3.1
 // 功能：
 // - 展示医生基本档案（姓名、职称、科室、性别等系统管理字段只读）
-// - 编辑可修改字段：联系电话、邮箱、擅长方向、个人简介（§4.3）
+// - 编辑可修改字段：擅长方向、个人简介（后端 PUT /api/doctors/me/profile 当前仅接受这两个字段，
+//   电话/邮箱不在更新范围内，保持只读展示）
 // - 修改密码入口（§2.3：密码修改适用于所有角色）
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getDoctorProfile, updateDoctorProfile } from '@/api/doctor'
-import type { DoctorProfile, DoctorProfileUpdateRequest } from '@/types/doctor'
+import type { DoctorProfile } from '@/types/doctor'
 
 const router = useRouter()
 
@@ -20,20 +21,14 @@ const profile = ref<DoctorProfile | null>(null)
 // 编辑模式
 const editing = ref(false)
 const saving = ref(false)
-const form = ref<DoctorProfileUpdateRequest>({
-  phone: '',
-  email: '',
+// 后端 PUT /api/doctors/me/profile 契约只接受 specialty 与 introduction，故 form 仅包含这两项
+const form = ref<{ specialty: string; introduction: string }>({
   specialty: '',
   introduction: '',
 })
 
-// 校验
-const phoneValid = computed(() => /^1\d{10}$/.test(form.value.phone))
-const emailValid = computed(() => {
-  if (!form.value.email) return true
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.value.email)
-})
-const canSave = computed(() => phoneValid.value && emailValid.value && !saving.value)
+// 校验：当前所有字段都是字符串，必填约束在 saveEdit 入口处理
+const canSave = computed(() => !saving.value)
 
 function genderText(gender?: string): string {
   if (gender === 'MALE') return '男'
@@ -76,8 +71,6 @@ async function loadProfile() {
 function startEdit() {
   if (!profile.value) return
   form.value = {
-    phone: profile.value.phone,
-    email: profile.value.email,
     specialty: profile.value.specialty,
     introduction: profile.value.introduction,
   }
@@ -89,12 +82,8 @@ function cancelEdit() {
 }
 
 async function saveEdit() {
-  if (!phoneValid.value) {
-    ElMessage.warning('请输入有效的手机号（11 位）')
-    return
-  }
-  if (!emailValid.value) {
-    ElMessage.warning('邮箱格式不正确')
+  if (!form.value.specialty.trim()) {
+    ElMessage.warning('请填写擅长方向')
     return
   }
   try {
@@ -108,12 +97,16 @@ async function saveEdit() {
   }
   saving.value = true
   try {
-    const updated = await updateDoctorProfile(form.value)
+    const updated = await updateDoctorProfile({
+      specialty: form.value.specialty.trim(),
+      introduction: form.value.introduction.trim(),
+    })
     profile.value = updated
     editing.value = false
     ElMessage.success('个人信息已保存')
   } catch (e) {
     ElMessage.error(e instanceof Error ? e.message : '保存失败')
+    console.error('[DoctorProfile] 保存失败：', e)
   } finally {
     saving.value = false
   }
@@ -219,29 +212,11 @@ onMounted(loadProfile)
         </template>
 
         <!-- 编辑模式 -->
+        <!--
+          说明：后端 PUT /api/doctors/me/profile 契约仅接受 specialty 和 introduction，
+          电话/邮箱不在更新范围内，故编辑区只暴露这两个字段，电话/邮箱保持只读展示。
+        -->
         <template v-else>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">
-                联系电话 <span class="required">*</span>
-              </label>
-              <input
-                v-model="form.phone"
-                class="form-input"
-                :class="{ 'input-error': !phoneValid }"
-                placeholder="11 位手机号"
-              />
-            </div>
-            <div class="form-group">
-              <label class="form-label">电子邮箱</label>
-              <input
-                v-model="form.email"
-                class="form-input"
-                :class="{ 'input-error': !emailValid }"
-                placeholder="如 name@example.com"
-              />
-            </div>
-          </div>
           <div class="form-group">
             <label class="form-label">擅长方向</label>
             <textarea
@@ -249,6 +224,8 @@ onMounted(loadProfile)
               class="form-textarea"
               rows="2"
               placeholder="如 高血压、糖尿病等慢性病诊治"
+              maxlength="200"
+              show-word-limit
             />
           </div>
           <div class="form-group">
@@ -258,6 +235,8 @@ onMounted(loadProfile)
               class="form-textarea"
               rows="3"
               placeholder="简要介绍从医经历、专业方向等"
+              maxlength="2000"
+              show-word-limit
             />
           </div>
           <div class="form-actions">

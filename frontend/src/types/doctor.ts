@@ -22,10 +22,9 @@ export interface DoctorProfile {
   updatedAt: string
 }
 
-// 医生可编辑的个人字段（系统管理字段如科室、职称、状态不在内）
+// 医生可编辑的个人字段（与 PUT /api/doctors/me/profile 契约保持一致）
+// 仅允许 specialty、introduction；电话/邮箱当前不在契约更新范围内
 export interface DoctorProfileUpdateRequest {
-  phone: string
-  email: string
   specialty: string
   introduction: string
 }
