@@ -2856,6 +2856,317 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApiResponse'
 
+  /api/statistics/dashboard:
+    get:
+      tags:
+        - 统计
+      summary: 管理员查询今日仪表盘概览
+      operationId: getStatisticsDashboard
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 今日仪表盘概览
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required:
+                          - todayAppointmentCount
+                          - todayCompletedEncounterCount
+                          - currentOnDutyDoctorCount
+                          - currentAvailableDeviceCount
+                          - highPriorityTriageCount
+                          - totalPatientCount
+                        properties:
+                          todayAppointmentCount:
+                            type: integer
+                            format: int64
+                          todayCompletedEncounterCount:
+                            type: integer
+                            format: int64
+                          currentOnDutyDoctorCount:
+                            type: integer
+                            format: int64
+                          currentAvailableDeviceCount:
+                            type: integer
+                            format: int64
+                          highPriorityTriageCount:
+                            type: integer
+                            format: int64
+                          totalPatientCount:
+                            type: integer
+                            format: int64
+        '403':
+          description: 非管理员无权访问
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/statistics/outpatient/daily:
+    get:
+      tags:
+        - 统计
+      summary: 管理员查询每日门诊量趋势
+      operationId: getDailyOutpatientStatistics
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: days
+          in: query
+          schema:
+            type: integer
+            default: 7
+        - name: departmentId
+          in: query
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 每日门诊量趋势
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+        '403':
+          description: 非管理员无权访问
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/statistics/doctor/encounter:
+    get:
+      tags:
+        - 统计
+      summary: 管理员查询医生接诊量排行
+      operationId: getDoctorEncounterStatistics
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: startDate
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: departmentId
+          in: query
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 医生接诊量排行
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+        '403':
+          description: 非管理员无权访问
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/statistics/department/outpatient:
+    get:
+      tags:
+        - 统计
+      summary: 管理员查询科室门诊量统计
+      operationId: getDepartmentOutpatientStatistics
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: startDate
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: 科室门诊量统计
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+        '403':
+          description: 非管理员无权访问
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/statistics/device/usage:
+    get:
+      tags:
+        - 统计
+      summary: 管理员查询设备使用率统计
+      operationId: getDeviceUsageStatistics
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: startDate
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: departmentId
+          in: query
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 设备使用率统计
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+        '403':
+          description: 非管理员无权访问
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/statistics/ai/summary:
+    get:
+      tags:
+        - 统计
+      summary: 管理员查询 AI 调用汇总
+      operationId: getAIStatisticsSummary
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: startDate
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: AI 调用汇总
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+        '403':
+          description: 非管理员无权访问
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/statistics/ai/by-capability:
+    get:
+      tags:
+        - 统计
+      summary: 管理员按能力查询 AI 调用统计
+      operationId: getAIStatisticsByCapability
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: startDate
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: AI 按能力统计
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+        '403':
+          description: 非管理员无权访问
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
 components:
   securitySchemes:
     bearerAuth:

@@ -82,6 +82,7 @@ interface DashboardSummaryResponse {
   currentOnDutyDoctorCount: number
   currentAvailableDeviceCount: number
   highPriorityTriageCount: number
+  totalPatientCount: number
 }
 
 interface DailyOutpatientStatisticsResponse {
@@ -789,7 +790,7 @@ export async function getStatisticsSummary(): Promise<StatisticsSummary> {
     todayActiveDoctors: dashboard.currentOnDutyDoctorCount,
     todayAvailableDevices: dashboard.currentAvailableDeviceCount,
     todayHighPriorityTriages: dashboard.highPriorityTriageCount,
-    totalPatients: 0,
+    totalPatients: dashboard.totalPatientCount,
     totalDoctors: doctors.length,
     totalDepartments: departments.length,
     totalDevices: devices.length,
