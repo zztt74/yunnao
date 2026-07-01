@@ -8,15 +8,16 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * 管理端用户响应 DTO
+ * 管理端用户响应 DTO。
  *
  * 不返回 passwordHash、tokenVersion 等敏感或内部字段。roles 返回角色名集合。
- * 注意：UserAccount 当前无 realName/phone/email 字段，故不包含这些字段
- * （B3 第一阶段限制，待联调 AI 确认是否扩展 user_account 表）。
  */
 public record AdminUserResponse(
         Long id,
         String username,
+        String realName,
+        String phone,
+        String email,
         Boolean enabled,
         Boolean accountNonLocked,
         Boolean accountNonExpired,
@@ -30,6 +31,9 @@ public record AdminUserResponse(
         return new AdminUserResponse(
                 u.getId(),
                 u.getUsername(),
+                u.getRealName(),
+                u.getPhone(),
+                u.getEmail(),
                 u.getEnabled(),
                 u.getAccountNonLocked(),
                 u.getAccountNonExpired(),

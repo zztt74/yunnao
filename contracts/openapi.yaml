@@ -2414,6 +2414,16 @@ paths:
                 role:
                   type: string
                   enum: [ADMIN, DOCTOR]
+                realName:
+                  type: string
+                  maxLength: 64
+                phone:
+                  type: string
+                  maxLength: 20
+                email:
+                  type: string
+                  maxLength: 128
+                  format: email
                 departmentId:
                   type: integer
                   format: int64
@@ -2422,6 +2432,8 @@ paths:
                   maxLength: 64
                 doctorTitle:
                   type: string
+                  enum: [CHIEF, DEPUTY_CHIEF, ATTENDING, RESIDENT]
+                  default: ATTENDING
                   maxLength: 32
                 specialty:
                   type: string
@@ -2477,6 +2489,16 @@ paths:
                 role:
                   type: string
                   enum: [ADMIN, DOCTOR]
+                realName:
+                  type: string
+                  maxLength: 64
+                phone:
+                  type: string
+                  maxLength: 20
+                email:
+                  type: string
+                  maxLength: 128
+                  format: email
       responses:
         '200':
           description: 更新成功

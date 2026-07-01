@@ -164,6 +164,9 @@ interface BackendDeviceResponse {
 interface BackendAdminUserResponse {
   id: number
   username: string
+  realName?: string | null
+  phone?: string | null
+  email?: string | null
   enabled: boolean
   accountNonLocked: boolean
   roles: string[]
@@ -352,11 +355,11 @@ function mapBackendUser(user: BackendAdminUserResponse): UserManageResponse {
   return {
     id: user.id,
     username: user.username,
-    realName: user.username,
+    realName: user.realName ?? user.username,
     roles,
     status: backendUserStatus(user),
-    phone: '',
-    email: '',
+    phone: user.phone ?? '',
+    email: user.email ?? '',
     lastLoginAt: null,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
@@ -514,7 +517,16 @@ export async function createUser(payload: UserCreateRequest): Promise<UserManage
     username: payload.username,
     password: payload.password,
     role,
-    doctorName: role === 'DOCTOR' ? payload.realName : undefined,
+    realName: payload.realName,
+    phone: payload.phone,
+    email: payload.email,
+    departmentId: role === 'DOCTOR' ? payload.departmentId : undefined,
+    doctorName: role === 'DOCTOR' ? payload.doctorName ?? payload.realName : undefined,
+    doctorTitle: role === 'DOCTOR' ? payload.doctorTitle : undefined,
+    specialty: role === 'DOCTOR' ? payload.specialty : undefined,
+    education: role === 'DOCTOR' ? payload.education : undefined,
+    experienceYears: role === 'DOCTOR' ? payload.experienceYears : undefined,
+    introduction: role === 'DOCTOR' ? payload.introduction : undefined,
   })
   return mapBackendUser(parseApiResponse<BackendAdminUserResponse>(res.data))
 }
@@ -525,6 +537,9 @@ export async function updateUser(
 ): Promise<UserManageResponse> {
   const res = await apiClient.put(`/admin/users/${id}`, {
     role: payload.roles?.[0] ? backendUserRole(payload.roles[0]) : undefined,
+    realName: payload.realName,
+    phone: payload.phone,
+    email: payload.email,
   })
   return mapBackendUser(parseApiResponse<BackendAdminUserResponse>(res.data))
 }

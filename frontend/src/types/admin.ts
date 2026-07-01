@@ -34,6 +34,13 @@ export interface UserCreateRequest {
   roles: UserRole[]
   phone: string
   email?: string
+  departmentId?: number
+  doctorName?: string
+  doctorTitle?: string
+  specialty?: string
+  education?: string
+  experienceYears?: number
+  introduction?: string
 }
 
 export interface UserUpdateRequest {

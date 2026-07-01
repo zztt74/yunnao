@@ -17,6 +17,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -28,19 +29,18 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
-/**
- * AdminUserService 单元测试（B3）
- */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("AdminUserService - 管理员用户管理测试")
+@DisplayName("AdminUserService")
 class AdminUserServiceTest {
 
     @Mock
@@ -60,8 +60,8 @@ class AdminUserServiceTest {
 
     @BeforeEach
     void setUp() {
-        adminRole = Role.builder().id(1L).name("ADMIN").description("管理员").build();
-        doctorRole = Role.builder().id(2L).name("DOCTOR").description("医生").build();
+        adminRole = Role.builder().id(1L).name("ADMIN").description("admin").build();
+        doctorRole = Role.builder().id(2L).name("DOCTOR").description("doctor").build();
     }
 
     private UserAccount buildUser(Long id, String username, Role role) {
@@ -83,15 +83,11 @@ class AdminUserServiceTest {
         return u;
     }
 
-    // ============================================================
-    // 创建
-    // ============================================================
-
     @Test
-    @DisplayName("创建 ADMIN - 应只建账号并绑定 ADMIN 角色")
-    void createUser_shouldCreateAdmin() {
+    void createUser_shouldCreateAdminWithProfileFields() {
         AdminUserCreateRequest request = new AdminUserCreateRequest(
                 "admin2", "Password123!", "ADMIN",
+                "Admin Two", "13800000001", "admin2@example.com",
                 null, null, null, null, null, null, null);
 
         when(userAccountRepository.existsByUsername("admin2")).thenReturn(false);
@@ -106,6 +102,9 @@ class AdminUserServiceTest {
         AdminUserResponse response = adminUserService.createUser(request);
 
         assertThat(response.username()).isEqualTo("admin2");
+        assertThat(response.realName()).isEqualTo("Admin Two");
+        assertThat(response.phone()).isEqualTo("13800000001");
+        assertThat(response.email()).isEqualTo("admin2@example.com");
         assertThat(response.roles()).contains("ADMIN");
         assertThat(response.enabled()).isTrue();
         verify(userAccountRepository).save(any(UserAccount.class));
@@ -113,33 +112,60 @@ class AdminUserServiceTest {
     }
 
     @Test
-    @DisplayName("创建 DOCTOR - 应复用 DoctorService 建医生档案")
-    void createUser_shouldCreateDoctorViaDoctorService() {
+    void createUser_shouldCreateDoctorViaDoctorServiceAndBackfillAccountProfile() {
         AdminUserCreateRequest request = new AdminUserCreateRequest(
                 "doctor2", "Password123!", "DOCTOR",
-                1L, "王医生", "ATTENDING", "心血管", "博士", 10, "简介");
+                "Doctor Wang", "13800000002", "doctor2@example.com",
+                1L, "Doctor Wang", "ATTENDING", "cardiology", "PhD", 10, "intro");
         UserAccount created = buildUser(20L, "doctor2", doctorRole);
 
         when(userAccountRepository.existsByUsername("doctor2")).thenReturn(false);
         when(doctorService.createDoctor(any(DoctorCreateRequest.class)))
                 .thenReturn(mock(DoctorResponse.class));
         when(userAccountRepository.findByUsername("doctor2")).thenReturn(Optional.of(created));
+        when(userAccountRepository.save(any(UserAccount.class))).thenAnswer(inv -> inv.getArgument(0));
 
         AdminUserResponse response = adminUserService.createUser(request);
 
         assertThat(response.username()).isEqualTo("doctor2");
+        assertThat(response.realName()).isEqualTo("Doctor Wang");
+        assertThat(response.phone()).isEqualTo("13800000002");
+        assertThat(response.email()).isEqualTo("doctor2@example.com");
         assertThat(response.roles()).contains("DOCTOR");
         verify(doctorService).createDoctor(any(DoctorCreateRequest.class));
     }
 
     @Test
-    @DisplayName("创建 DOCTOR - 缺少 departmentId/doctorName 应拒绝(400)")
-    void createUser_shouldRejectDoctorWithoutProfile() {
+    void createUser_shouldUseRealNameAndDefaultTitleWhenDoctorFieldsArePartial() {
         AdminUserCreateRequest request = new AdminUserCreateRequest(
                 "doctor3", "Password123!", "DOCTOR",
-                null, null, null, null, null, null, null);
+                "Doctor Li", "13800000003", "doctor3@example.com",
+                1L, null, null, "internal medicine", null, null, null);
+        UserAccount created = buildUser(21L, "doctor3", doctorRole);
 
         when(userAccountRepository.existsByUsername("doctor3")).thenReturn(false);
+        when(doctorService.createDoctor(any(DoctorCreateRequest.class)))
+                .thenReturn(mock(DoctorResponse.class));
+        when(userAccountRepository.findByUsername("doctor3")).thenReturn(Optional.of(created));
+        when(userAccountRepository.save(any(UserAccount.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        AdminUserResponse response = adminUserService.createUser(request);
+
+        ArgumentCaptor<DoctorCreateRequest> captor = ArgumentCaptor.forClass(DoctorCreateRequest.class);
+        verify(doctorService).createDoctor(captor.capture());
+        assertThat(captor.getValue().name()).isEqualTo("Doctor Li");
+        assertThat(captor.getValue().title()).isEqualTo("ATTENDING");
+        assertThat(response.realName()).isEqualTo("Doctor Li");
+    }
+
+    @Test
+    void createUser_shouldRejectDoctorWithoutProfile() {
+        AdminUserCreateRequest request = new AdminUserCreateRequest(
+                "doctor4", "Password123!", "DOCTOR",
+                null, null, null,
+                null, null, null, null, null, null, null);
+
+        when(userAccountRepository.existsByUsername("doctor4")).thenReturn(false);
 
         assertThatThrownBy(() -> adminUserService.createUser(request))
                 .isInstanceOf(BusinessException.class)
@@ -148,10 +174,10 @@ class AdminUserServiceTest {
     }
 
     @Test
-    @DisplayName("创建 PATIENT - 应拒绝并提示走自注册(400)")
     void createUser_shouldRejectPatient() {
         AdminUserCreateRequest request = new AdminUserCreateRequest(
                 "pat1", "Password123!", "PATIENT",
+                null, null, null,
                 null, null, null, null, null, null, null);
 
         assertThatThrownBy(() -> adminUserService.createUser(request))
@@ -161,10 +187,10 @@ class AdminUserServiceTest {
     }
 
     @Test
-    @DisplayName("创建用户 - 用户名重复应拒绝(409)")
     void createUser_shouldRejectDuplicatedUsername() {
         AdminUserCreateRequest request = new AdminUserCreateRequest(
                 "existing", "Password123!", "ADMIN",
+                null, null, null,
                 null, null, null, null, null, null, null);
 
         when(userAccountRepository.existsByUsername("existing")).thenReturn(true);
@@ -175,15 +201,11 @@ class AdminUserServiceTest {
                 .hasFieldOrPropertyWithValue("httpStatus", 409);
     }
 
-    // ============================================================
-    // 更新角色
-    // ============================================================
-
     @Test
-    @DisplayName("更新用户角色 - 应清空旧角色并绑定新角色")
-    void updateUser_shouldReplaceRole() {
+    void updateUser_shouldReplaceRoleAndUpdateProfileFieldsWithoutDoctorProfileLinkage() {
         UserAccount user = buildUser(1L, "u1", doctorRole);
-        AdminUserUpdateRequest request = new AdminUserUpdateRequest("ADMIN");
+        AdminUserUpdateRequest request = new AdminUserUpdateRequest(
+                "ADMIN", "Updated User", "13800000003", "updated@example.com");
 
         when(userAccountRepository.findById(1L)).thenReturn(Optional.of(user));
         when(roleRepository.findByName("ADMIN")).thenReturn(Optional.of(adminRole));
@@ -193,13 +215,15 @@ class AdminUserServiceTest {
 
         assertThat(response.roles()).containsExactly("ADMIN");
         assertThat(response.roles()).doesNotContain("DOCTOR");
+        assertThat(response.realName()).isEqualTo("Updated User");
+        assertThat(response.phone()).isEqualTo("13800000003");
+        assertThat(response.email()).isEqualTo("updated@example.com");
     }
 
     @Test
-    @DisplayName("更新用户角色 - 改为 PATIENT 应拒绝(400)")
     void updateUser_shouldRejectPatientRole() {
         UserAccount user = buildUser(1L, "u1", doctorRole);
-        AdminUserUpdateRequest request = new AdminUserUpdateRequest("PATIENT");
+        AdminUserUpdateRequest request = new AdminUserUpdateRequest("PATIENT", null, null, null);
 
         when(userAccountRepository.findById(1L)).thenReturn(Optional.of(user));
 
@@ -208,12 +232,7 @@ class AdminUserServiceTest {
                 .hasFieldOrPropertyWithValue("httpStatus", 400);
     }
 
-    // ============================================================
-    // 状态变更
-    // ============================================================
-
     @Test
-    @DisplayName("禁用用户 - enabled 应设为 false")
     void changeStatus_shouldDisable() {
         UserAccount user = buildUser(1L, "u1", adminRole);
         when(userAccountRepository.findById(1L)).thenReturn(Optional.of(user));
@@ -225,7 +244,6 @@ class AdminUserServiceTest {
     }
 
     @Test
-    @DisplayName("锁定用户 - accountNonLocked 应设为 false")
     void changeStatus_shouldLock() {
         UserAccount user = buildUser(1L, "u1", adminRole);
         when(userAccountRepository.findById(1L)).thenReturn(Optional.of(user));
@@ -237,7 +255,6 @@ class AdminUserServiceTest {
     }
 
     @Test
-    @DisplayName("启用用户 - 应清锁定并重置失败计数")
     void changeStatus_shouldEnableAndClearLock() {
         UserAccount user = buildUser(1L, "u1", adminRole);
         user.setEnabled(false);
@@ -253,7 +270,6 @@ class AdminUserServiceTest {
     }
 
     @Test
-    @DisplayName("状态变更 - 不支持的操作应拒绝(400)")
     void changeStatus_shouldRejectUnsupportedAction() {
         UserAccount user = buildUser(1L, "u1", adminRole);
         when(userAccountRepository.findById(1L)).thenReturn(Optional.of(user));
@@ -263,12 +279,7 @@ class AdminUserServiceTest {
                 .hasFieldOrPropertyWithValue("httpStatus", 400);
     }
 
-    // ============================================================
-    // 重置密码
-    // ============================================================
-
     @Test
-    @DisplayName("重置密码 - 应更新 hash、强制改密、递增 tokenVersion")
     void resetPassword_shouldUpdateHashAndTokenVersion() {
         UserAccount user = buildUser(1L, "u1", adminRole);
         when(userAccountRepository.findById(1L)).thenReturn(Optional.of(user));
@@ -283,12 +294,7 @@ class AdminUserServiceTest {
         verify(userAccountRepository).save(user);
     }
 
-    // ============================================================
-    // 列表
-    // ============================================================
-
     @Test
-    @DisplayName("用户列表 - 应分页返回并映射为 AdminUserResponse")
     void listUsers_shouldReturnPagedResponse() {
         UserAccount u1 = buildUser(1L, "admin1", adminRole);
         Page<UserAccount> page = new PageImpl<>(List.of(u1), PageRequest.of(0, 20), 1);
@@ -303,7 +309,6 @@ class AdminUserServiceTest {
     }
 
     @Test
-    @DisplayName("用户/角色不存在 - 应抛 404")
     void shouldThrowNotFound() {
         when(userAccountRepository.findById(99L)).thenReturn(Optional.empty());
 
