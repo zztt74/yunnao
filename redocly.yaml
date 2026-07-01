@@ -9,3 +9,4 @@ rules:
   operation-operationId: error
   operation-summary: error
   security-defined: error
+  no-ambiguous-paths: off

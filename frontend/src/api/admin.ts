@@ -48,6 +48,7 @@ import {
   changeDeviceStatus as changeRealDeviceStatus,
   getAllDevices as getRealDevices,
   getDeviceStatusHistory as getRealDeviceStatusHistory,
+  mapBackendDevice,
 } from '@/api/device'
 import { getPatientDetail } from '@/api/patient'
 
@@ -140,8 +141,65 @@ interface AuditLogResponse {
   createdAt: string
 }
 
-function unsupportedAdminFeature(feature: string): never {
-  throw new Error(`${feature}: 后端尚未提供对应管理接口，已停止使用本地假数据。`)
+interface BackendDeviceResponse {
+  id: number
+  code: string
+  name: string
+  type: string
+  departmentId?: number | null
+  status: DeviceStatus
+  purchaseDate?: string | null
+  warrantyUntil?: string | null
+  lastMaintenance?: string | null
+  location?: string | null
+  manufacturer?: string | null
+  model?: string | null
+  serialNumber?: string | null
+  notes?: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+interface BackendAdminUserResponse {
+  id: number
+  username: string
+  enabled: boolean
+  accountNonLocked: boolean
+  roles: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+interface BackendTriageRecordResponse {
+  id: number
+  patientId: number
+  symptoms: string
+  duration?: string | null
+  supplement?: string | null
+  aiDepartmentCode?: string | null
+  aiPriority?: string | null
+  aiReason?: string | null
+  aiSafetyNotice?: string | null
+  aiEmergencySuggested?: boolean | null
+  aiSymptomKeywords?: string | null
+  mappedDepartmentId?: number | null
+  mappingStatus?: string | null
+  aiStatus?: string | null
+  aiFailureReason?: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+interface AIInvocationResponse {
+  id: number
+  capability: string
+  businessType: string
+  businessId: number | null
+  status: string
+  errorType: string | null
+  errorMessage: string | null
+  durationMs: number | null
+  startedAt: string
 }
 
 function emptyPage<T>(query?: { page?: number; pageSize?: number }): PageResult<T> {
@@ -275,6 +333,94 @@ function mapAuditLog(log: AuditLogResponse): OperationLog {
   }
 }
 
+function backendUserStatus(user: Pick<BackendAdminUserResponse, 'enabled' | 'accountNonLocked'>): UserStatus {
+  if (!user.enabled) return 'DISABLED'
+  if (!user.accountNonLocked) return 'LOCKED'
+  return 'ENABLED'
+}
+
+function backendUserRole(role: UserRole): 'ADMIN' | 'DOCTOR' {
+  if (role === 'ADMIN' || role === 'DOCTOR') return role
+  throw new Error('管理端创建/更新患者账号不走 /api/admin/users，请使用患者自助注册接口')
+}
+
+function mapBackendUser(user: BackendAdminUserResponse): UserManageResponse {
+  const roles = user.roles.filter((role): role is UserRole =>
+    role === 'ADMIN' || role === 'DOCTOR' || role === 'PATIENT',
+  )
+  return {
+    id: user.id,
+    username: user.username,
+    realName: user.username,
+    roles,
+    status: backendUserStatus(user),
+    phone: '',
+    email: '',
+    lastLoginAt: null,
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+  }
+}
+
+function backendDeviceType(device: Partial<DeviceResponse>): string {
+  if (device.category === 'LABORATORY') return 'LABORATORY'
+  if (device.category === 'MONITOR') return 'MONITOR'
+  if (device.category === 'OTHER') return 'OTHER'
+  return device.applicableItems?.[0] ?? device.category ?? 'EXAMINATION'
+}
+
+function backendCreateDevicePayload(payload: Partial<DeviceResponse>) {
+  return {
+    code: payload.code,
+    name: payload.name,
+    type: backendDeviceType(payload),
+    location: payload.location,
+    notes: payload.applicableItems?.join(', '),
+  }
+}
+
+function backendUpdateDevicePayload(payload: Partial<DeviceResponse>) {
+  return {
+    name: payload.name,
+    type: backendDeviceType(payload),
+    location: payload.location,
+    notes: payload.applicableItems?.join(', '),
+  }
+}
+
+function mapTriageRecord(record: BackendTriageRecordResponse): AdminTriageRecord {
+  return {
+    id: record.id,
+    patientId: record.patientId,
+    patientName: `patient-${record.patientId}`,
+    symptoms: record.symptoms,
+    recommendedDepartmentId: record.mappedDepartmentId ?? 0,
+    recommendedDepartmentName: record.aiDepartmentCode ?? record.mappingStatus ?? '',
+    priority: (record.aiPriority ?? 'LOW') as AdminTriageRecord['priority'],
+    reason: record.aiReason ?? record.aiFailureReason ?? '',
+    safetyAdvice: record.aiSafetyNotice ?? '',
+    emergencyAdvice: record.aiEmergencySuggested ? record.aiSafetyNotice ?? '' : undefined,
+    aiSummary: record.aiReason ?? record.aiFailureReason ?? '',
+    createdAt: record.createdAt,
+  }
+}
+
+function mapAiInvocation(log: AIInvocationResponse): AiInvocationLog {
+  return {
+    id: log.id,
+    callType: log.capability,
+    provider: 'backend-ai-provider',
+    model: '',
+    businessType: log.businessType,
+    businessId: log.businessId,
+    success: log.status === 'SUCCESS',
+    duration: log.durationMs ?? 0,
+    errorType: log.errorType,
+    errorMessage: log.errorMessage,
+    calledAt: log.startedAt,
+  }
+}
+
 async function getAllDoctorsRaw(name?: string): Promise<BackendDoctorResponse[]> {
   const res = await apiClient.get('/doctors', {
     params: { page: 1, pageSize: 100, name: name || undefined },
@@ -336,37 +482,72 @@ export async function setDepartmentStatus(
   return mapDepartment(parseApiResponse<BackendDepartmentResponse>(res.data))
 }
 
-export async function getUsers(_query?: {
+export async function getUsers(query?: {
   status?: UserStatus
   role?: UserRole
   keyword?: string
 }): Promise<UserManageResponse[]> {
-  unsupportedAdminFeature('用户管理列表')
+  const res = await apiClient.get('/admin/users', {
+    params: {
+      enabled: query?.status === 'ENABLED'
+        ? true
+        : query?.status === 'DISABLED'
+          ? false
+          : undefined,
+      role: query?.role,
+      keyword: query?.keyword,
+      page: 1,
+      size: 100,
+    },
+  })
+  let users = parseApiResponse<PageResponse<BackendAdminUserResponse>>(res.data).items.map(mapBackendUser)
+  if (query?.status === 'LOCKED') {
+    users = users.filter((user) => user.status === 'LOCKED')
+  }
+  return users
 }
 
-export async function createUser(_payload: UserCreateRequest): Promise<UserManageResponse> {
-  unsupportedAdminFeature('创建用户')
+export async function createUser(payload: UserCreateRequest): Promise<UserManageResponse> {
+  const role = backendUserRole(payload.roles[0])
+  const res = await apiClient.post('/admin/users', {
+    username: payload.username,
+    password: payload.password,
+    role,
+    doctorName: role === 'DOCTOR' ? payload.realName : undefined,
+  })
+  return mapBackendUser(parseApiResponse<BackendAdminUserResponse>(res.data))
 }
 
 export async function updateUser(
-  _id: number,
-  _payload: UserUpdateRequest,
+  id: number,
+  payload: UserUpdateRequest,
 ): Promise<UserManageResponse> {
-  unsupportedAdminFeature('更新用户')
+  const res = await apiClient.put(`/admin/users/${id}`, {
+    role: payload.roles?.[0] ? backendUserRole(payload.roles[0]) : undefined,
+  })
+  return mapBackendUser(parseApiResponse<BackendAdminUserResponse>(res.data))
 }
 
 export async function changeUserStatus(
-  _id: number,
-  _payload: UserStatusChangeRequest,
+  id: number,
+  payload: UserStatusChangeRequest,
 ): Promise<UserManageResponse> {
-  unsupportedAdminFeature('变更用户状态')
+  const actionMap: Record<UserStatus, 'ENABLE' | 'DISABLE' | 'LOCK'> = {
+    ENABLED: 'ENABLE',
+    DISABLED: 'DISABLE',
+    LOCKED: 'LOCK',
+  }
+  const res = await apiClient.post(`/admin/users/${id}/status`, {
+    action: actionMap[payload.status],
+  })
+  return mapBackendUser(parseApiResponse<BackendAdminUserResponse>(res.data))
 }
 
 export async function resetUserPassword(
-  _id: number,
-  _payload: ResetPasswordRequest,
+  id: number,
+  payload: ResetPasswordRequest,
 ): Promise<void> {
-  unsupportedAdminFeature('重置用户密码')
+  await apiClient.post(`/admin/users/${id}/reset-password`, payload)
 }
 
 export async function getDoctors(query?: {
@@ -560,15 +741,17 @@ export async function getAdminDevices(): Promise<DeviceResponse[]> {
   return getRealDevices()
 }
 
-export async function createDevice(_payload: Partial<DeviceResponse>): Promise<DeviceResponse> {
-  unsupportedAdminFeature('创建设备档案')
+export async function createDevice(payload: Partial<DeviceResponse>): Promise<DeviceResponse> {
+  const res = await apiClient.post('/devices', backendCreateDevicePayload(payload))
+  return mapBackendDevice(parseApiResponse<BackendDeviceResponse>(res.data))
 }
 
 export async function updateDevice(
-  _id: number,
-  _payload: Partial<DeviceResponse>,
+  id: number,
+  payload: Partial<DeviceResponse>,
 ): Promise<DeviceResponse> {
-  unsupportedAdminFeature('更新设备档案')
+  const res = await apiClient.put(`/devices/${id}`, backendUpdateDevicePayload(payload))
+  return mapBackendDevice(parseApiResponse<BackendDeviceResponse>(res.data))
 }
 
 export async function setDeviceStatus(
@@ -586,7 +769,10 @@ export async function getDeviceStatusHistory(
 }
 
 export async function getTriageRecords(): Promise<AdminTriageRecord[]> {
-  unsupportedAdminFeature('分诊记录全量查询')
+  const res = await apiClient.get('/triage', {
+    params: { page: 1, size: 100 },
+  })
+  return parseApiResponse<PageResponse<BackendTriageRecordResponse>>(res.data).items.map(mapTriageRecord)
 }
 
 export async function getStatisticsSummary(): Promise<StatisticsSummary> {
@@ -716,5 +902,8 @@ export async function getOperationLogs(): Promise<OperationLog[]> {
 }
 
 export async function getAiInvocationLogs(): Promise<AiInvocationLog[]> {
-  unsupportedAdminFeature('AI 调用日志列表')
+  const res = await apiClient.get('/audit/ai/invocations', {
+    params: { page: 1, size: 100 },
+  })
+  return parseApiResponse<PageResponse<AIInvocationResponse>>(res.data).items.map(mapAiInvocation)
 }

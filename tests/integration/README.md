@@ -71,3 +71,48 @@ AI_MODEL=<provider-model>
 
 Do not commit `.env`. The backend passes the key only through the Authorization
 header and does not persist it in AI invocation records.
+
+Full real clinic flow:
+
+```powershell
+$env:BACKEND_PORT = '18080'
+node tests/integration/e2e-real-clinic-flow.mjs
+```
+
+The flow script creates a fresh patient and appointment, then verifies:
+
+- AI triage
+- patient appointment
+- doctor pending queue
+- encounter start
+- doctor patient detail access
+- final doctor diagnosis
+- examination order, device usage, result entry, review
+- medical record AI generation with manual fallback
+- prescription creation, AI review, confirmation
+- encounter completion
+- patient record/examination/prescription/encounter visibility
+- admin dashboard and audit visibility
+- permission denials for patient/admin, doctor/admin, anonymous access
+
+Real AI provider smoke:
+
+```powershell
+$env:BACKEND_PORT = '18080'
+node tests/integration/smoke-ai-provider.mjs
+```
+
+This script calls the configured HTTP provider through the backend and prints
+only capability status summaries. It does not print the API key.
+
+AI provider fault injection:
+
+```powershell
+$env:BACKEND_PORT = '18080'
+node tests/integration/ai-provider-fault-injection.mjs
+```
+
+This script starts a local fake OpenAI-compatible provider, recreates the
+backend container with a local-only dummy key, verifies non-JSON response,
+invalid-schema response, and timeout degradation, then recreates the backend
+again with the original Compose environment.

@@ -76,7 +76,7 @@ const roleOptions: { value: UserRole; label: string }[] = [
 ]
 
 const usernameValid = computed(() => /^[A-Za-z0-9_.]{3,32}$/.test(form.username))
-const passwordValid = computed(() => form.password.length >= 6)
+const passwordValid = computed(() => form.password.length >= 8)
 const realNameValid = computed(() => form.realName.trim().length >= 2)
 const rolesValid = computed(() => form.roles.length > 0)
 const phoneValid = computed(() => /^1\d{10}$/.test(form.phone))
@@ -224,7 +224,7 @@ async function handleSubmit() {
     return
   }
   if (modalMode.value === 'create' && !passwordValid.value) {
-    ElMessage.warning('初始密码至少 6 位')
+    ElMessage.warning('初始密码至少 8 位')
     return
   }
   if (!phoneValid.value) {
@@ -272,7 +272,7 @@ async function handleSubmit() {
 async function handleResetPassword(user: UserManageResponse) {
   try {
     const { value } = await ElMessageBox.prompt(
-      `请输入 ${user.realName}（${user.username}）的新密码，至少 6 位`,
+      `请输入 ${user.realName}（${user.username}）的新密码，至少 8 位`,
       '重置密码',
       {
         confirmButtonText: '确认重置',
@@ -281,7 +281,7 @@ async function handleResetPassword(user: UserManageResponse) {
         inputType: 'password',
         inputValidator: (input: string) => {
           if (!input) return '请输入新密码'
-          if (input.length < 6) return '密码至少 6 位'
+          if (input.length < 8) return '密码至少 8 位'
           return true
         },
       },
@@ -511,7 +511,7 @@ onMounted(loadUsers)
                   type="password"
                   class="form-input"
                   :class="{ 'input-error': form.password && !passwordValid }"
-                  placeholder="至少 6 位"
+                  placeholder="至少 8 位"
                   maxlength="64"
                 />
               </div>

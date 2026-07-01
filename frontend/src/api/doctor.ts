@@ -75,9 +75,13 @@ export async function getDoctorProfile(): Promise<DoctorProfile> {
 }
 
 export async function updateDoctorProfile(
-  _payload: DoctorProfileUpdateRequest,
+  payload: DoctorProfileUpdateRequest,
 ): Promise<DoctorProfile> {
-  throw new Error('后端尚未提供医生本人资料更新接口，已停止使用本地假数据。')
+  const res = await apiClient.put('/doctors/me/profile', {
+    specialty: payload.specialty,
+    introduction: payload.introduction,
+  })
+  return toDoctorProfile(parseApiResponse<BackendDoctorResponse>(res.data))
 }
 
 export async function getDoctorSchedules(): Promise<ScheduleResponse[]> {
