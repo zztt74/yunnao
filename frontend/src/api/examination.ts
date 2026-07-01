@@ -77,7 +77,8 @@ export async function getMyExaminations(params?: {
 }): Promise<ExaminationResponse[]> {
   const patient = await getPatientInfo()
   const res = await apiClient.get(`/examinations/patient/${patient.id}/tracking`)
-  let list = parseApiResponse<BackendExaminationTracking[]>(res.data)
+  const orders = parseTrackingResponse(res.data)
+  let list = orders
     .map((order) => mapTrackingExamination(order, patient.id))
   if (params?.type) {
     list = list.filter((item) => item.type === params.type)
@@ -144,6 +145,15 @@ async function getOrder(id: number): Promise<BackendExaminationOrder> {
   return parseApiResponse<BackendExaminationOrder>(res.data)
 }
 
+function parseTrackingResponse(
+  data: unknown,
+): BackendExaminationTracking[] {
+  const parsed = parseApiResponse<
+    BackendExaminationTracking[] | PageResponse<BackendExaminationTracking>
+  >(data as never)
+  return Array.isArray(parsed) ? parsed : parsed.items ?? []
+}
+
 async function withResult(order: BackendExaminationOrder): Promise<ExaminationResponse> {
   if (order.status !== 'RESULT_ENTERED' && order.status !== 'REVIEWED') {
     return mapExamination(order)
@@ -202,8 +212,9 @@ function mapTrackingExamination(
   order: BackendExaminationTracking,
   patientId: number,
 ): ExaminationResponse {
+  const orderId = (order as { id?: number }).id ?? order.orderId
   return {
-    id: order.orderId,
+    id: orderId,
     encounterId: order.encounterId,
     patientId,
     doctorId: 0,

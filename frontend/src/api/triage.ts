@@ -78,6 +78,9 @@ function mapPriority(priority?: TriagePriority | null): TriagePriority {
 }
 
 function mapAnalyzeResponse(response: TriageAnalyzeResponse): TriageResultResponse {
+  const isUnmapped = !response.mappedDepartmentId
+    || response.mappedDepartmentName == null
+    || response.mappingStatus === 'MANUAL'
   return {
     id: response.triageRecordId,
     patientId: response.patientId,
@@ -87,7 +90,8 @@ function mapAnalyzeResponse(response: TriageAnalyzeResponse): TriageResultRespon
     reason: response.aiFailureReason ?? response.aiReason ?? 'AI 分诊未返回推荐理由',
     safetyAdvice: response.aiSafetyNotice ?? 'AI 分诊仅供辅助参考，请以医生判断为准。',
     emergencyAdvice: response.aiEmergencySuggested ? '症状存在急诊风险，请优先急诊处理。' : undefined,
-    followUpQuestion: response.followUpQuestion ?? undefined,
+    followUpQuestion: response.followUpQuestion
+      ?? (isUnmapped ? '请选择合适科室继续挂号。' : undefined),
     conversationId: response.conversationId ?? undefined,
     round: response.round ?? 1,
     isFinal: response.isFinal ?? true,
