@@ -211,6 +211,39 @@ public class DoctorService {
     }
 
     /**
+     * 医生更新本人资料
+     *
+     * 仅允许更新 specialty / education / experienceYears / introduction，
+     * 不允许自行修改 departmentId / status / title。
+     * 非医生账号（user_id 未关联医生档案）抛权限错误。
+     */
+    @Transactional
+    public DoctorResponse updateMyProfile(Long userId, DoctorProfileUpdateRequest request) {
+        Doctor doctor = doctorRepository.findByUserId(userId)
+                .orElseThrow(DoctorErrorCode.DOCTOR_PERMISSION_DENIED::toException);
+
+        doctor.setSpecialty(request.specialty());
+        doctor.setUpdatedAt(LocalDateTime.now());
+        doctor = doctorRepository.save(doctor);
+
+        Department department = departmentRepository.findById(doctor.getDepartmentId()).orElse(null);
+
+        Long doctorId = doctor.getId();
+        DoctorProfile profile = doctorProfileRepository.findByDoctorId(doctorId)
+                .orElseGet(() -> DoctorProfile.builder()
+                        .doctorId(doctorId)
+                        .createdAt(LocalDateTime.now())
+                        .build());
+        profile.setEducation(request.education());
+        profile.setExperienceYears(request.experienceYears());
+        profile.setIntroduction(request.introduction());
+        profile.setUpdatedAt(LocalDateTime.now());
+        doctorProfileRepository.save(profile);
+
+        return toResponse(doctor, department != null ? department.getName() : null, profile);
+    }
+
+    /**
      * 转换为响应 DTO
      */
     private DoctorResponse toResponse(Doctor doctor, String departmentName, DoctorProfile profile) {

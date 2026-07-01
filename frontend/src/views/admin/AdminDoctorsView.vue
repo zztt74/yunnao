@@ -213,6 +213,7 @@ async function handleSubmit() {
       ElMessage.success('医生账号已创建')
     } else if (editingId.value !== null) {
       const payload: DoctorUpdateRequest = {
+        name: form.name.trim(),
         title: form.title.trim(),
         departmentId: form.departmentId as number,
         phone: form.phone.trim(),

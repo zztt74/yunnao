@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { consultTriage, type TriageTurn } from '@/api/triage'
+import { getDepartments } from '@/api/department'
 import type { TriageResultResponse, TriagePriority } from '@/types/triage'
 
 const router = useRouter()
@@ -54,9 +55,9 @@ const priorityConfig: Record<
   { label: string; bg: string; border: string; color: string; icon: string }
 > = {
   EMERGENCY: { label: '紧急', bg: '#fff1f0', border: '#ffa39e', color: '#cf1322', icon: '🚨' },
-  HIGH: { label: '高', bg: '#fff7e6', border: '#ffd591', color: '#d4380d', icon: '⚠️' },
-  MEDIUM: { label: '中', bg: '#fffbe6', border: '#ffe58f', color: '#d48806', icon: '💡' },
-  LOW: { label: '低', bg: '#f6ffed', border: '#b7eb8f', color: '#389e0d', icon: '✓' },
+  HIGH: { label: '较高', bg: '#fff7e6', border: '#ffd591', color: '#d4380d', icon: '⚠️' },
+  MEDIUM: { label: '一般', bg: '#fffbe6', border: '#ffe58f', color: '#d48806', icon: '💡' },
+  LOW: { label: '较低', bg: '#f6ffed', border: '#b7eb8f', color: '#389e0d', icon: '✓' },
 }
 
 const showEmergency = computed(
@@ -68,7 +69,12 @@ const showEmergency = computed(
 )
 
 const canAskMore = computed(
-  () => !!triageResult.value?.followUpQuestion && round.value < MAX_ROUNDS,
+  () => round.value < MAX_ROUNDS,
+)
+
+// 是否有 AI 显式追问：决定追问区显示"AI 追问"还是"自由补充"
+const hasFollowUpQuestion = computed(
+  () => !!triageResult.value?.followUpQuestion,
 )
 
 async function callTriage(chiefComplaint: string) {
@@ -157,23 +163,26 @@ function goToAppointment() {
   }
 }
 
-const manualDepartments = [
-  { id: 1, name: '急诊科' },
-  { id: 2, name: '神经内科' },
-  { id: 3, name: '消化内科' },
-  { id: 4, name: '内科' },
-  { id: 5, name: '骨科' },
-  { id: 6, name: '皮肤科' },
-  { id: 7, name: '全科' },
-]
+const manualDepartments = ref<Array<{ id: number; name: string }>>([])
 const selectedManualDeptId = ref<number | null>(null)
+
+async function loadManualDepartments() {
+  try {
+    manualDepartments.value = (await getDepartments())
+      .filter((d) => d.status === 'ENABLED')
+      .map((d) => ({ id: d.id, name: d.name }))
+  } catch (e) {
+    console.error('加载科室失败：', e)
+    ElMessage.error('科室加载失败，请稍后重试')
+  }
+}
 
 function goToManualAppointment() {
   if (selectedManualDeptId.value === null) {
     ElMessage.warning('请先选择科室')
     return
   }
-  const dept = manualDepartments.find((d) => d.id === selectedManualDeptId.value)
+  const dept = manualDepartments.value.find((d) => d.id === selectedManualDeptId.value)
   router.push({
     path: '/patient/appointments',
     query: { departmentId: dept?.id, departmentName: dept?.name },
@@ -190,6 +199,8 @@ function resetForm() {
   followUpText.value = ''
   round.value = 0
 }
+
+onMounted(loadManualDepartments)
 </script>
 
 <template>
@@ -262,17 +273,17 @@ function resetForm() {
             class="priority-label"
             :style="{ color: priorityConfig[triageResult.priority].color }"
           >
-            {{ priorityConfig[triageResult.priority].label }}级优先
+            紧急程度：{{ priorityConfig[triageResult.priority].label }}
           </span>
-          <span class="round-tag">第 {{ round }} 轮</span>
+          <span class="round-tag">问诊轮次 {{ round }}</span>
         </div>
         <div class="dept-name">{{ triageResult.recommendedDepartmentName }}</div>
         <div class="dept-tip">推荐科室</div>
       </div>
 
-      <!-- 多轮对话快照 -->
+      <!-- 多轮对话快照：AI 气泡内已含 reason，避免与下方"推荐理由"重复 -->
       <div v-if="history.length > 1" class="history-card">
-        <div class="history-title">💬 对话记录</div>
+        <div class="history-title">💬 问诊对话记录</div>
         <div
           v-for="(turn, idx) in history"
           :key="idx"
@@ -286,12 +297,7 @@ function resetForm() {
         </div>
       </div>
 
-      <div class="result-section">
-        <div class="section-label">推荐理由</div>
-        <div class="section-content">{{ triageResult.reason }}</div>
-      </div>
-
-      <div class="result-section safety">
+      <div v-if="triageResult.safetyAdvice" class="result-section safety">
         <div class="section-label">⚠️ 安全提示</div>
         <div class="section-content">{{ triageResult.safetyAdvice }}</div>
       </div>
@@ -301,14 +307,20 @@ function resetForm() {
         <div class="section-content">{{ triageResult.emergencyAdvice }}</div>
       </div>
 
-      <!-- 追问输入区 -->
+      <!-- 追问 / 继续输入区 -->
       <div v-if="canAskMore" class="followup-card">
-        <div class="followup-label">AI 追问 · 第 {{ round }}/{{ MAX_ROUNDS }} 轮</div>
-        <div class="followup-question">{{ triageResult.followUpQuestion }}</div>
+        <div class="followup-label">
+          <span v-if="hasFollowUpQuestion">AI 追问 · 第 {{ round }}/{{ MAX_ROUNDS }} 轮</span>
+          <span v-else>继续描述 · 第 {{ round }}/{{ MAX_ROUNDS }} 轮</span>
+        </div>
+        <div v-if="hasFollowUpQuestion" class="followup-question">{{ triageResult.followUpQuestion }}</div>
+        <div v-else class="followup-question followup-hint">
+          如需进一步描述症状、补充病史或调整主诉，请在下方继续输入
+        </div>
         <textarea
           v-model="followUpText"
           class="form-textarea"
-          placeholder="请回复 AI 的追问..."
+          :placeholder="hasFollowUpQuestion ? '请回复 AI 的追问...' : '继续输入症状或补充信息...'"
           rows="2"
           maxlength="300"
         />
@@ -317,17 +329,12 @@ function resetForm() {
           :disabled="!canAnswerFollowUp"
           @click="handleFollowUp"
         >
-          继续追问
+          {{ hasFollowUpQuestion ? '继续追问' : '继续描述' }}
         </button>
       </div>
 
-      <div v-else-if="!triageResult.followUpQuestion" class="result-section done">
-        <div class="section-label">✅ AI 已给出最终建议</div>
-        <div class="section-content">如需进一步问诊，请重新发起问诊。</div>
-      </div>
-
       <div v-else class="result-section done">
-        <div class="section-label">⏹ 已达到最大追问轮数 ({{ MAX_ROUNDS }})</div>
+        <div class="section-label">⏹ 已达到最大问诊轮数 ({{ MAX_ROUNDS }})</div>
         <div class="section-content">如需进一步咨询，请重新发起问诊或前往科室挂号。</div>
       </div>
 
@@ -709,6 +716,15 @@ function resetForm() {
   color: #1a1a1a;
   line-height: 1.6;
   margin-bottom: 10px;
+}
+
+.followup-hint {
+  color: #475569;
+  font-size: 13px;
+  background: #ffffff;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border-left: 3px solid #91d5ff;
 }
 
 .result-actions {

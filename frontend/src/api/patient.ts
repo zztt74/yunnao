@@ -1,130 +1,148 @@
+import type { AppointmentResponse } from '@/types/appointment'
+import type { PageResponse } from '@/types/api'
+import type { ExaminationResponse } from '@/types/examination'
+import type { MedicalRecord } from '@/types/medical-record'
 import type {
-  PatientRegisterRequest,
-  PatientResponse,
+  PatientDetailResponse,
   PatientProfileResponse,
   PatientProfileUpdateRequest,
-  PatientUpdateRequest,
-  PatientDetailResponse,
+  PatientRegisterRequest,
+  PatientResponse,
   PatientTimelineEntry,
+  PatientUpdateRequest,
 } from '@/types/patient'
-import {
-  getMockPatientInfo,
-  getMockPatientProfile,
-  updateMockPatientInfo,
-  updateMockPatientProfile,
-} from '@/api/mock/medical-mock'
-import {
-  getPatientDetail as mockGetPatientDetail,
-  getPatientTimeline as mockGetPatientTimeline,
-} from '@/api/mock/doctor-mock'
+import type { PrescriptionResponse } from '@/types/prescription'
+import { apiClient } from '@/api/client'
+import { parseApiResponse } from '@/api/response'
 
-// MOCK 模式：后端 /api/patients/* 暂未就绪，使用本地演示数据
-// 后端就绪后请把下面 MOCK 实现替换为真实调用即可，参考 patient.ts 真实接口的写法：
-//   const res = await apiClient.put('/patients/me/profile', payload)
-//   return parseApiResponse(res.data)
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-/** 患者注册（演示用，本地直接返回成功 + 一份 MOCK 资料） */
 export async function registerPatient(
   payload: PatientRegisterRequest,
 ): Promise<PatientResponse> {
-  console.warn('[MOCK] /api/patients/register 后端未就绪，使用本地虚构演示数据')
-  await delay(400)
-  // 真实接口就绪后请替换为：
-  // const res = await apiClient.post('/patients/register', payload)
-  // return parseApiResponse(res.data)
-  return {
-    id: 1,
-    userId: 1,
-    name: payload.name,
-    gender: payload.gender,
-    birthDate: payload.birthDate,
-    phone: payload.phone,
-    status: 'ACTIVE',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  }
+  const res = await apiClient.post('/patients/register', payload)
+  return parseApiResponse(res.data)
 }
 
-/** 获取当前患者个人档案 */
 export async function getPatientProfile(): Promise<PatientProfileResponse> {
-  console.warn('[MOCK] /api/patients/me/profile GET 后端未就绪，使用本地虚构演示数据')
-  await delay(300)
-  return getMockPatientProfile()
-
-  // 后端就绪后请替换为：
-  // const res = await apiClient.get('/patients/me/profile')
-  // return parseApiResponse(res.data)
+  const patient = await getPatientInfo()
+  const res = await apiClient.get(`/patients/${patient.id}/profile`)
+  return parseApiResponse(res.data)
 }
 
-/** 更新当前患者个人档案 */
 export async function updatePatientProfile(
   payload: PatientProfileUpdateRequest,
 ): Promise<PatientProfileResponse> {
-  console.warn('[MOCK] /api/patients/me/profile PUT 后端未就绪，使用本地虚构演示数据')
-  await delay(400)
-  return updateMockPatientProfile(payload)
-
-  // 后端就绪后请替换为：
-  // const res = await apiClient.put('/patients/me/profile', payload)
-  // return parseApiResponse(res.data)
+  const patient = await getPatientInfo()
+  const res = await apiClient.put(`/patients/${patient.id}/profile`, payload)
+  return parseApiResponse(res.data)
 }
 
-/** 获取当前患者基本信息 */
 export async function getPatientInfo(): Promise<PatientResponse> {
-  console.warn('[MOCK] /api/patients/me GET 后端未就绪，使用本地虚构演示数据')
-  await delay(300)
-  return getMockPatientInfo()
-
-  // 后端就绪后请替换为：
-  // const res = await apiClient.get('/patients/me')
-  // return parseApiResponse(res.data)
+  const res = await apiClient.get('/patients/me')
+  return parseApiResponse(res.data)
 }
 
-/**
- * 更新当前患者基本信息（§3.3 / §3.6）
- * - 演示阶段写入内存 store
- * - §3.5 后端需要保留历史医疗事实，所以这份数据走的是"基本信息"表，不是医疗事实表
- */
 export async function updatePatientInfo(
   payload: PatientUpdateRequest,
 ): Promise<PatientResponse> {
-  console.warn('[MOCK] /api/patients/me PUT 后端未就绪，使用本地虚构演示数据')
-  await delay(400)
-  return updateMockPatientInfo(payload)
-
-  // 后端就绪后请替换为：
-  // const res = await apiClient.put('/patients/me', payload)
-  // return parseApiResponse(res.data)
+  const patient = await getPatientInfo()
+  const res = await apiClient.put(`/patients/${patient.id}`, payload)
+  return parseApiResponse(res.data)
 }
 
-// ===== 医生端：患者详情与诊疗时间线（§3.3、§3.4）=====
-
-/**
- * 查询患者详情（医生端，§3.3：接诊关系成立后医生可见必要信息）
- * - 含基本信息、过敏史、既往史等扩展档案
- */
 export async function getPatientDetail(
   patientId: number,
 ): Promise<PatientDetailResponse> {
-  console.warn('[MOCK] /api/patients/{id} 后端未就绪，使用本地虚构演示数据')
-  await delay(300)
-  const detail = mockGetPatientDetail(patientId)
-  if (!detail) throw new Error('患者不存在或无接诊关系')
-  return detail
+  const [patientRes, profileRes] = await Promise.all([
+    apiClient.get(`/patients/${patientId}`),
+    apiClient.get(`/patients/${patientId}/profile`),
+  ])
+  const patient = parseApiResponse<PatientResponse>(patientRes.data)
+  const profile = parseApiResponse<PatientProfileResponse>(profileRes.data)
+  return {
+    id: patient.id,
+    name: patient.name,
+    gender: patient.gender,
+    birthDate: patient.birthDate,
+    age: calculateAge(patient.birthDate),
+    phone: patient.phone,
+    allergies: profile.allergies || '无',
+    medicalHistory: profile.medicalHistory || '无',
+    address: profile.address || '',
+    emergencyContact: profile.emergencyContact || '',
+    emergencyPhone: profile.emergencyPhone || '',
+    createdAt: patient.createdAt,
+  }
 }
 
-/**
- * 查询患者诊疗时间线（§3.4，按时间倒序）
- * - 串联历次分诊/挂号/就诊/检查检验/病历/处方
- */
 export async function getPatientTimeline(
   patientId: number,
 ): Promise<PatientTimelineEntry[]> {
-  console.warn('[MOCK] /api/patients/{id}/timeline 后端未就绪，使用本地虚构演示数据')
-  await delay(400)
-  return mockGetPatientTimeline(patientId)
+  const [appointments, examinations, medicalRecords, prescriptions] = await Promise.all([
+    apiClient.get(`/appointments/patient/${patientId}`).then((res) =>
+      parsePageOrArray<AppointmentResponse>(res.data)),
+    apiClient.get(`/examinations/patient/${patientId}`).then((res) =>
+      parseApiResponse<PageResponse<ExaminationResponse>>(res.data).items),
+    apiClient.get(`/medical-records/patient/${patientId}`).then((res) =>
+      parseApiResponse<PageResponse<MedicalRecord>>(res.data).items),
+    apiClient.get(`/prescriptions/patient/${patientId}`).then((res) =>
+      parseApiResponse<PageResponse<PrescriptionResponse>>(res.data).items),
+  ])
+
+  return [
+    ...appointments.map((appointment): PatientTimelineEntry => ({
+      id: appointment.id,
+      type: 'APPOINTMENT',
+      title: `${appointment.departmentName} 挂号`,
+      description: `${appointment.doctorName}，状态：${appointment.status}`,
+      occurredAt: appointment.bookedAt,
+      statusLabel: appointment.status,
+    })),
+    ...examinations.map((exam): PatientTimelineEntry => ({
+      id: exam.id,
+      type: 'EXAMINATION',
+      title: exam.itemName,
+      description: exam.purpose || exam.status,
+      occurredAt: exam.orderedAt,
+      encounterId: exam.encounterId,
+      resourceId: exam.id,
+      statusLabel: exam.status,
+    })),
+    ...medicalRecords.map((record): PatientTimelineEntry => ({
+      id: record.id,
+      type: 'MEDICAL_RECORD',
+      title: '电子病历',
+      description: record.chiefComplaint || record.status,
+      occurredAt: record.confirmedAt || record.createdAt,
+      encounterId: record.encounterId,
+      resourceId: record.id,
+      statusLabel: record.status,
+    })),
+    ...prescriptions.map((prescription): PatientTimelineEntry => ({
+      id: prescription.id,
+      type: 'PRESCRIPTION',
+      title: '处方',
+      description: prescription.items.map((item) => item.drugName).join('、') || prescription.status,
+      occurredAt: prescription.confirmedAt || prescription.createdAt,
+      encounterId: prescription.encounterId,
+      resourceId: prescription.id,
+      statusLabel: prescription.status,
+    })),
+  ].sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
+}
+
+function calculateAge(birthDate: string): number {
+  const birth = new Date(birthDate)
+  if (Number.isNaN(birth.getTime())) return 0
+  const today = new Date()
+  let age = today.getFullYear() - birth.getFullYear()
+  const monthDelta = today.getMonth() - birth.getMonth()
+  if (monthDelta < 0 || (monthDelta === 0 && today.getDate() < birth.getDate())) {
+    age -= 1
+  }
+  return Math.max(0, age)
+}
+
+function parsePageOrArray<T>(response: unknown): T[] {
+  const data = parseApiResponse<T[] | PageResponse<T>>(response as never)
+  return Array.isArray(data) ? data : data.items
 }

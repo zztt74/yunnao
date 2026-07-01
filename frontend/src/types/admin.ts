@@ -34,6 +34,13 @@ export interface UserCreateRequest {
   roles: UserRole[]
   phone: string
   email?: string
+  departmentId?: number
+  doctorName?: string
+  doctorTitle?: string
+  specialty?: string
+  education?: string
+  experienceYears?: number
+  introduction?: string
 }
 
 export interface UserUpdateRequest {
@@ -120,6 +127,7 @@ export interface DoctorCreateRequest {
 }
 
 export interface DoctorUpdateRequest {
+  name?: string
   title?: string
   departmentId?: number
   phone?: string
@@ -249,7 +257,27 @@ export interface AiInvocationLog {
   duration: number // 毫秒
   errorType: string | null // 错误类型（timeout/auth_failure/quota_exceeded/model_error 等）
   errorMessage: string | null
+  attemptCount: number
+  operatorId: number | null
   calledAt: string
+}
+
+export interface AiInvocationAttempt {
+  id: number
+  invocationId: number
+  provider: string
+  model: string
+  promptVersion: string | null
+  status: string
+  httpStatus: number | null
+  errorType: string | null
+  errorMessage: string | null
+  requestSummary: string | null
+  responseSummary: string | null
+  duration: number | null
+  attemptIndex: number
+  startedAt: string
+  finishedAt: string | null
 }
 
 // ============================================================

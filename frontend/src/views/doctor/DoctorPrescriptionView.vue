@@ -17,7 +17,8 @@ import {
   confirmPrescription,
   voidPrescription,
 } from '@/api/prescription'
-import { mockDrugDictionary, mockPatientSummaries, type MockDrug } from '@/api/mock/doctor-mock'
+import { getDrugOptions, type DrugOption } from '@/api/drug'
+import { getPatientDetail } from '@/api/patient'
 import { useEncounterStore } from '@/stores/encounter'
 import type {
   PrescriptionResponse,
@@ -38,6 +39,8 @@ const confirming = ref(false)
 const voiding = ref(false)
 
 const prescription = ref<PrescriptionResponse | null>(null)
+const drugs = ref<DrugOption[]>([])
+const patientAllergyText = ref('无')
 
 // 草稿表单
 const diagnosis = ref('')
@@ -50,14 +53,14 @@ const selectedDrugId = ref<number | null>(null)
 // 患者过敏史（用于 AI 审核与展示）
 const patientAllergies = computed(() => {
   if (!activeEncounter.value) return '无'
-  return mockPatientSummaries[activeEncounter.value.patientId]?.allergies || '无'
+  return patientAllergyText.value || '无'
 })
 
 const hasAllergyRisk = computed(
   () => patientAllergies.value && patientAllergies.value !== '无',
 )
 
-const drugOptions = computed(() => mockDrugDictionary)
+const drugOptions = computed(() => drugs.value)
 
 const status = computed(() => prescription.value?.status ?? null)
 const isDraft = computed(() => status.value === 'DRAFT')
@@ -144,13 +147,29 @@ function syncFormFromPrescription() {
 async function loadPrescription() {
   loading.value = true
   try {
-    const pres = await getEncounterPrescription(encounterId.value)
+    const [pres, drugList] = await Promise.all([
+      getEncounterPrescription(encounterId.value),
+      getDrugOptions(),
+    ])
     prescription.value = pres
+    drugs.value = drugList
+    await loadPatientAllergies()
     if (pres) syncFormFromPrescription()
   } catch (e) {
     console.error('[Prescription] 加载失败：', e)
   } finally {
     loading.value = false
+  }
+}
+
+async function loadPatientAllergies() {
+  if (!activeEncounter.value) return
+  try {
+    const patient = await getPatientDetail(activeEncounter.value.patientId)
+    patientAllergyText.value = patient.allergies || '无'
+  } catch (e) {
+    patientAllergyText.value = '无'
+    console.warn('[Prescription] patient allergy unavailable', e)
   }
 }
 
@@ -160,7 +179,7 @@ function addDrug() {
     ElMessage.warning('请先选择药品')
     return
   }
-  const drug = mockDrugDictionary.find((d) => d.id === selectedDrugId.value)
+  const drug = drugs.value.find((d) => d.id === selectedDrugId.value)
   if (!drug) return
   // 避免重复添加
   if (items.value.some((it) => it.drugId === drug.id)) {

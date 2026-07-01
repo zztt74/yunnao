@@ -15,6 +15,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -116,9 +117,20 @@ public class ScheduleController {
     @GetMapping("/available")
     public ApiResponse<List<ScheduleResponse>> getAvailable(
             @RequestParam(required = false) Long departmentId,
-            @RequestParam(required = false) LocalDateTime date,
+            @RequestParam(required = false) String date,
             HttpServletRequest httpRequest) {
-        List<ScheduleResponse> response = scheduleService.getAvailableSchedules(departmentId, date);
+        List<ScheduleResponse> response = scheduleService.getAvailableSchedules(departmentId, parseDate(date));
         return ApiResponse.success(response, (String) httpRequest.getAttribute("traceId"));
+    }
+
+    private LocalDateTime parseDate(String date) {
+        if (date == null || date.isBlank()) {
+            return null;
+        }
+        String trimmed = date.trim();
+        if (trimmed.length() == 10) {
+            return LocalDate.parse(trimmed).atStartOfDay();
+        }
+        return LocalDateTime.parse(trimmed);
     }
 }

@@ -60,6 +60,19 @@ function hasChiefComplaint(): boolean {
   return Boolean(consultationNotes.value.chiefComplaint?.trim())
 }
 
+function aiContextLength(): number {
+  return [
+    consultationNotes.value.chiefComplaint,
+    consultationNotes.value.presentIllness,
+    consultationNotes.value.pastHistory,
+    consultationNotes.value.physicalExam,
+  ].reduce((total, value) => total + (value?.trim().length ?? 0), 0)
+}
+
+function hasEnoughAiContext(): boolean {
+  return hasChiefComplaint() && aiContextLength() >= 20
+}
+
 async function loadDiagnoses() {
   loading.value = true
   try {
@@ -77,6 +90,10 @@ async function runAiAssist() {
     ElMessage.warning('请先在「概览」页填写主诉后再进行 AI 辅助诊断')
     return
   }
+  if (!hasEnoughAiContext()) {
+    ElMessage.warning('问诊信息过少，请补充现病史、既往史或体格检查后再进行 AI 辅助诊断')
+    return
+  }
   aiLoading.value = true
   aiError.value = ''
   aiResult.value = null
@@ -91,6 +108,8 @@ async function runAiAssist() {
     aiResult.value = res
     if (res.aiStatus === 'FAILED') {
       ElMessage.warning('AI 服务暂不可用，请进行手工诊断')
+    } else if (res.candidates.length === 0) {
+      ElMessage.warning('AI 未生成候选诊断，请补充现病史、体格检查或检查结果后重试')
     } else {
       ElMessage.success(`AI 返回 ${res.candidates.length} 条候选诊断`)
     }
@@ -186,10 +205,13 @@ onMounted(loadDiagnoses)
       <div v-if="!hasChiefComplaint()" class="warn-inline">
         请先在「概览」页填写主诉
       </div>
+      <div v-else-if="!hasEnoughAiContext()" class="warn-inline">
+        当前问诊信息较少，请补充现病史、既往史或体格检查后再发起 AI 辅助诊断
+      </div>
 
       <button
         class="primary-btn"
-        :disabled="aiLoading || !hasChiefComplaint()"
+        :disabled="aiLoading || !hasEnoughAiContext()"
         @click="runAiAssist"
       >
         <span v-if="aiLoading" class="btn-spinner" />
@@ -253,6 +275,14 @@ onMounted(loadDiagnoses)
             <button class="ghost-btn" @click="fillFromCandidate(c)">用作最终诊断</button>
           </div>
         </div>
+      </div>
+
+      <div v-else-if="aiResult?.aiStatus === 'SUCCESS'" class="ai-failed">
+        <div class="failed-title">AI 未生成候选诊断</div>
+        <div class="failed-desc">
+          当前信息不足以形成候选诊断，请补充现病史、既往史、体格检查或检查结果后重试。
+        </div>
+        <div class="failed-hint">也可以在下方手工录入医生最终诊断。</div>
       </div>
 
       <!-- AI 错误 -->

@@ -1,11 +1,13 @@
 package com.neusoft.cloudbrain.device.service;
 
 import com.neusoft.cloudbrain.common.exception.BusinessException;
+import com.neusoft.cloudbrain.device.dto.DeviceCreateRequest;
 import com.neusoft.cloudbrain.device.dto.DeviceEndUsageRequest;
 import com.neusoft.cloudbrain.device.dto.DeviceResponse;
 import com.neusoft.cloudbrain.device.dto.DeviceStartUsageRequest;
 import com.neusoft.cloudbrain.device.dto.DeviceStatusChangeRequest;
 import com.neusoft.cloudbrain.device.dto.DeviceUsageResponse;
+import com.neusoft.cloudbrain.device.dto.DeviceUpdateRequest;
 import com.neusoft.cloudbrain.device.entity.Device;
 import com.neusoft.cloudbrain.device.entity.DeviceStatusHistory;
 import com.neusoft.cloudbrain.device.entity.DeviceUsage;
@@ -13,6 +15,7 @@ import com.neusoft.cloudbrain.device.repository.DeviceRepository;
 import com.neusoft.cloudbrain.device.repository.DeviceStatusHistoryRepository;
 import com.neusoft.cloudbrain.device.repository.DeviceUsageRepository;
 import com.neusoft.cloudbrain.encounter.entity.Encounter;
+import com.neusoft.cloudbrain.department.repository.DepartmentRepository;
 import com.neusoft.cloudbrain.encounter.repository.EncounterRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -57,6 +60,8 @@ class DeviceServiceTest {
     private DeviceStatusHistoryRepository deviceStatusHistoryRepository;
     @Mock
     private EncounterRepository encounterRepository;
+    @Mock
+    private DepartmentRepository departmentRepository;
 
     @InjectMocks
     private DeviceService deviceService;
@@ -356,5 +361,102 @@ class DeviceServiceTest {
 
         assertThat(response).hasSize(1);
         assertThat(response.get(0).status()).isEqualTo("AVAILABLE");
+    }
+
+    // ============================================================
+    // B2：设备档案创建和更新
+    // ============================================================
+
+    @Test
+    @DisplayName("创建设备 - code 唯一时应创建成功且 status 默认 AVAILABLE")
+    void createDevice_shouldSucceedWhenCodeUnique() {
+        DeviceCreateRequest request = new DeviceCreateRequest(
+                "DEV-NEW-001", "新增监护仪", "MONITOR", 1L,
+                "ICU 201", "GE", "CARESCAPE", "SN-NEW-001",
+                "新购入", null, null);
+
+        when(deviceRepository.existsByCode("DEV-NEW-001")).thenReturn(false);
+        when(departmentRepository.existsById(1L)).thenReturn(true);
+        when(deviceRepository.save(any(Device.class))).thenAnswer(inv -> {
+            Device d = inv.getArgument(0);
+            d.setId(2L);
+            return d;
+        });
+
+        DeviceResponse response = deviceService.createDevice(request);
+
+        assertThat(response.code()).isEqualTo("DEV-NEW-001");
+        assertThat(response.name()).isEqualTo("新增监护仪");
+        assertThat(response.type()).isEqualTo("MONITOR");
+        assertThat(response.status()).isEqualTo("AVAILABLE");
+        verify(deviceRepository).save(any(Device.class));
+    }
+
+    @Test
+    @DisplayName("创建设备 - code 重复时抛出 BusinessException(409)")
+    void createDevice_shouldThrowWhenCodeDuplicated() {
+        DeviceCreateRequest request = new DeviceCreateRequest(
+                "DEV-MON-001", "重复设备", "MONITOR", null,
+                null, null, null, null, null, null, null);
+
+        when(deviceRepository.existsByCode("DEV-MON-001")).thenReturn(true);
+
+        assertThatThrownBy(() -> deviceService.createDevice(request))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "DEVICE_CODE_DUPLICATED")
+                .hasFieldOrPropertyWithValue("httpStatus", 409);
+    }
+
+    @Test
+    @DisplayName("更新设备 - 应只更新基础档案且不改 status 和 code")
+    void updateDevice_shouldUpdateBasicFieldsWithoutStatusOrCode() {
+        testDevice.setStatus("IN_USE");
+        DeviceUpdateRequest request = new DeviceUpdateRequest(
+                "更新监护仪", "MONITOR_V2", 2L, "急诊科 101",
+                "Philips", "MX800", "SN-UPD-001", "更新备注",
+                java.time.LocalDate.of(2025, 1, 1), null);
+
+        when(deviceRepository.findById(1L)).thenReturn(Optional.of(testDevice));
+        when(departmentRepository.existsById(2L)).thenReturn(true);
+        when(deviceRepository.save(any(Device.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        DeviceResponse response = deviceService.updateDevice(1L, request);
+
+        assertThat(response.name()).isEqualTo("更新监护仪");
+        assertThat(response.type()).isEqualTo("MONITOR_V2");
+        assertThat(response.departmentId()).isEqualTo(2L);
+        assertThat(response.location()).isEqualTo("急诊科 101");
+        // status 和 code 不应被修改
+        assertThat(response.status()).isEqualTo("IN_USE");
+        assertThat(response.code()).isEqualTo("DEV-MON-001");
+    }
+
+    @Test
+    @DisplayName("更新设备 - 设备不存在时抛出 BusinessException(404)")
+    void updateDevice_shouldThrowWhenNotFound() {
+        DeviceUpdateRequest request = new DeviceUpdateRequest(
+                "名称", "MONITOR", null, null, null, null, null, null, null, null);
+
+        when(deviceRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> deviceService.updateDevice(99L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("httpStatus", 404);
+    }
+
+    @Test
+    @DisplayName("创建设备 - departmentId 不存在时抛出 BusinessException(404)")
+    void createDevice_shouldThrowWhenDepartmentNotFound() {
+        DeviceCreateRequest request = new DeviceCreateRequest(
+                "DEV-NEW-002", "监护仪", "MONITOR", 999L,
+                null, null, null, null, null, null, null);
+
+        when(deviceRepository.existsByCode("DEV-NEW-002")).thenReturn(false);
+        when(departmentRepository.existsById(999L)).thenReturn(false);
+
+        assertThatThrownBy(() -> deviceService.createDevice(request))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "DEVICE_DEPARTMENT_NOT_FOUND")
+                .hasFieldOrPropertyWithValue("httpStatus", 404);
     }
 }

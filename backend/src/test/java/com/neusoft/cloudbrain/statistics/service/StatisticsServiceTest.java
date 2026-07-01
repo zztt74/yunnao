@@ -39,7 +39,7 @@ class StatisticsServiceTest {
     @Test
     @DisplayName("仪表盘概览：正确返回今日数据")
     void getDashboardSummary_shouldReturnTodayData() {
-        DashboardSummary expected = new DashboardSummary(10L, 8L, 3L, 5L, 2L);
+        DashboardSummary expected = new DashboardSummary(10L, 8L, 3L, 5L, 2L, 120L);
         when(statisticsRepository.getDashboardSummary(any(LocalDateTime.class), any(LocalDateTime.class)))
                 .thenReturn(expected);
 

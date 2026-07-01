@@ -2,6 +2,7 @@
 // 分诊记录（§6）
 // 设计来源：product/11_功能需求.md §6 AI 智能问诊与分诊
 // 查看全部分诊记录，支持按优先级与关键字筛选，并展示优先级分布
+// 注：后端 /api/triage 当前仅支持 page/size；优先级与关键字筛选在前端完成
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getTriageRecords } from '@/api/admin'
@@ -11,10 +12,18 @@ import type { AdminTriageRecord, TriagePriority } from '@/types/triage'
 const loading = ref(false)
 const loadError = ref('')
 const records = ref<AdminTriageRecord[]>([])
+// 后端 PageResponse.total：分诊全量记录数（不受单页 size=100 限制）
+const totalRecords = ref(0)
+// 后端单页 size 上限 100：超过后最早数据被截断，统计基于已加载数据计算
+const BACKEND_PAGE_SIZE = 100
 
 // ---- 筛选 ----
 const priorityFilter = ref<'ALL' | TriagePriority>('ALL')
 const keyword = ref('')
+
+// ---- 分页 ----
+const PAGE_SIZE = 20
+const currentPage = ref(1)
 
 // ---- 展开 ----
 const expandedId = ref<number | null>(null)
@@ -54,12 +63,13 @@ function formatDateTime(iso: string): string {
   }
 }
 
-// ---- 统计（基于全量数据） ----
+// ---- 统计（基于当前已加载的全量数据，注意后端单页 size 上限 100） ----
 const stats = computed(() => {
   const all = records.value
   const count = (p: TriagePriority) => all.filter((r) => r.priority === p).length
   return {
-    total: all.length,
+    loaded: all.length,
+    total: totalRecords.value,
     low: count('LOW'),
     medium: count('MEDIUM'),
     high: count('HIGH'),
@@ -90,13 +100,28 @@ const filteredRecords = computed(() => {
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 })
 
+// ---- 分页结果（基于筛选结果） ----
+const paginatedRecords = computed(() => {
+  const start = (currentPage.value - 1) * PAGE_SIZE
+  return filteredRecords.value.slice(start, start + PAGE_SIZE)
+})
+
+// 切换筛选条件时回到第一页
+function onFilterChange() {
+  currentPage.value = 1
+}
+
 // ---- 加载 ----
 async function loadRecords() {
   loading.value = true
   loadError.value = ''
   try {
-    // MOCK 返回的对象在运行时包含 patientName/symptoms/aiSummary 字段
-    records.value = await getTriageRecords()
+    // 后端单页 size 上限 100；分优先级统计基于已加载数据计算
+    // （全量统计需后端聚合接口 /triage/stats，已记录到想法文档 D-1）
+    const result = await getTriageRecords({ page: 1, pageSize: BACKEND_PAGE_SIZE })
+    records.value = result.list
+    totalRecords.value = result.total
+    currentPage.value = 1
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : '加载分诊记录失败'
     console.error('[AdminTriage] 加载失败：', e)
@@ -120,11 +145,11 @@ onMounted(loadRecords)
       <div class="header-sub">查看 AI 智能分诊的全部记录与优先级分布（§6）</div>
     </div>
 
-    <!-- 统计概览 -->
+    <!-- 统计概览：总记录 = 后端全量；优先级分布 = 已加载（受 size=100 限制） -->
     <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-value">{{ stats.total }}</div>
-        <div class="stat-label">总记录</div>
+        <div class="stat-label">总记录（后端）</div>
       </div>
       <div class="stat-card">
         <div class="stat-value text-low">{{ stats.low }}</div>
@@ -148,7 +173,7 @@ onMounted(loadRecords)
     <div class="filter-bar">
       <div class="filter-item">
         <span class="filter-label">优先级</span>
-        <el-select v-model="priorityFilter" style="width: 160px">
+        <el-select v-model="priorityFilter" style="width: 160px" @change="onFilterChange">
           <el-option
             v-for="o in priorityOptions"
             :key="o.value"
@@ -163,6 +188,7 @@ onMounted(loadRecords)
           v-model="keyword"
           placeholder="搜索患者姓名、症状、推荐科室、推荐理由"
           clearable
+          @input="onFilterChange"
         />
       </div>
     </div>
@@ -189,7 +215,7 @@ onMounted(loadRecords)
     <!-- 记录列表 -->
     <div v-else class="triage-list">
       <div
-        v-for="r in filteredRecords"
+        v-for="r in paginatedRecords"
         :key="r.id"
         class="triage-card"
         :class="[`priority-${r.priority}`, { expanded: expandedId === r.id }]"
@@ -248,6 +274,24 @@ onMounted(loadRecords)
           </div>
         </div>
       </div>
+
+      <!-- 分页（当前基于已加载 100 条客户端分页；超量数据需后端分页接口） -->
+      <div v-if="filteredRecords.length > PAGE_SIZE || stats.loaded < stats.total" class="triage-pagination-hint">
+        <span v-if="stats.loaded < stats.total">
+          已加载 {{ stats.loaded }} / {{ stats.total }} 条，剩余数据需后端分页/筛选参数（已记录到想法文档 D-1）
+        </span>
+        <span v-else>分页（基于已加载 {{ stats.loaded }} 条）</span>
+      </div>
+      <el-pagination
+        v-if="filteredRecords.length > PAGE_SIZE"
+        class="triage-pagination"
+        layout="prev, pager, next, jumper, total"
+        :page-size="PAGE_SIZE"
+        :current-page="currentPage"
+        :total="filteredRecords.length"
+        background
+        @current-change="(p: number) => (currentPage = p)"
+      />
     </div>
   </div>
 </template>
@@ -592,6 +636,23 @@ onMounted(loadRecords)
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* 分页 */
+.triage-pagination {
+  display: flex;
+  justify-content: center;
+  margin-top: 14px;
+}
+
+.triage-pagination-hint {
+  text-align: center;
+  font-size: 12px;
+  color: #8e8e93;
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: #fff7e6;
+  border-radius: 8px;
 }
 
 /* 响应式 */

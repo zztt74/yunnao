@@ -32,6 +32,8 @@ postman/       OpenAPI 派生集合说明
 $env:JAVA_HOME='C:\Users\cdk\AppData\Local\Programs\Temurin\jdk-17.0.19+10'
 $env:Path="$env:JAVA_HOME\bin;$env:Path"
 $env:DB_PASSWORD='your-local-password'
+$env:JWT_SECRET='replace-with-at-least-32-byte-local-secret'
+$env:INITIAL_ADMIN_PASSWORD='your-local-admin-password'
 cd backend
 mvn spring-boot:run
 ```

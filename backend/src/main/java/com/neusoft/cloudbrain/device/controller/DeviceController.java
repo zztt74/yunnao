@@ -1,12 +1,17 @@
 package com.neusoft.cloudbrain.device.controller;
 
+import com.neusoft.cloudbrain.auth.dto.AuthPrincipal;
+import com.neusoft.cloudbrain.auth.security.SecurityUtils;
 import com.neusoft.cloudbrain.common.api.ApiResponse;
 import com.neusoft.cloudbrain.common.api.PageResponse;
+import com.neusoft.cloudbrain.common.exception.BusinessException;
+import com.neusoft.cloudbrain.device.dto.DeviceCreateRequest;
 import com.neusoft.cloudbrain.device.dto.DeviceEndUsageRequest;
 import com.neusoft.cloudbrain.device.dto.DeviceResponse;
 import com.neusoft.cloudbrain.device.dto.DeviceStartUsageRequest;
 import com.neusoft.cloudbrain.device.dto.DeviceStatusChangeRequest;
 import com.neusoft.cloudbrain.device.dto.DeviceStatusHistoryResponse;
+import com.neusoft.cloudbrain.device.dto.DeviceUpdateRequest;
 import com.neusoft.cloudbrain.device.dto.DeviceUsageResponse;
 import com.neusoft.cloudbrain.device.service.DeviceService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -18,6 +23,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -57,6 +63,37 @@ public class DeviceController {
 
     public DeviceController(DeviceService deviceService) {
         this.deviceService = deviceService;
+    }
+
+    // ============================================================
+    // 设备档案：创建和更新（管理员）
+    // ============================================================
+
+    /**
+     * 新增设备档案（管理员）
+     */
+    @PostMapping
+    public ApiResponse<DeviceResponse> create(
+            @Valid @RequestBody DeviceCreateRequest request,
+            HttpServletRequest httpRequest) {
+        checkAdminPermission();
+        DeviceResponse response = deviceService.createDevice(request);
+        return ApiResponse.success(response, (String) httpRequest.getAttribute("traceId"));
+    }
+
+    /**
+     * 更新设备档案基础信息（管理员）
+     *
+     * 仅更新基础档案，不修改 status 和 code。状态变更走 POST /api/devices/{id}/status。
+     */
+    @PutMapping("/{id}")
+    public ApiResponse<DeviceResponse> update(
+            @PathVariable Long id,
+            @Valid @RequestBody DeviceUpdateRequest request,
+            HttpServletRequest httpRequest) {
+        checkAdminPermission();
+        DeviceResponse response = deviceService.updateDevice(id, request);
+        return ApiResponse.success(response, (String) httpRequest.getAttribute("traceId"));
     }
 
     // ============================================================
@@ -219,5 +256,15 @@ public class DeviceController {
         Pageable pageable = PageRequest.of(Math.max(0, page - 1), Math.min(size, 100));
         Page<DeviceUsageResponse> response = deviceService.getDeviceUsageByUser(userId, pageable);
         return ApiResponse.success(PageResponse.from(response), (String) httpRequest.getAttribute("traceId"));
+    }
+
+    /**
+     * 校验管理员权限
+     */
+    private void checkAdminPermission() {
+        AuthPrincipal currentUser = SecurityUtils.getCurrentUser();
+        if (!currentUser.roles().contains("ADMIN")) {
+            throw new BusinessException("PERMISSION_DENIED", "无权限执行该操作", 403);
+        }
     }
 }

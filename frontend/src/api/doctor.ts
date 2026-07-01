@@ -1,64 +1,100 @@
-// 医生个人信息 API
-// 设计来源：product/11_功能需求.md §4.3 科室与医生管理、§2.3 密码修改
-// 后端 /api/doctors/me 未就绪，使用本地 MOCK 实现
-// 后端就绪后请替换为真实调用并删除 doctor-mock 引用
-
 import type {
   DoctorProfile,
   DoctorProfileUpdateRequest,
 } from '@/types/doctor'
 import type { ScheduleResponse } from '@/types/appointment'
-import {
-  getMockDoctorProfile,
-  updateMockDoctorProfile,
-  getMockDoctorSchedules,
-  getCurrentDoctorId,
-} from '@/api/mock/doctor-mock'
+import type { PageResponse } from '@/types/api'
+import { apiClient } from '@/api/client'
+import { parseApiResponse } from '@/api/response'
+import { useAuthStore } from '@/stores/auth'
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+interface BackendDoctorResponse {
+  id: number
+  userId: number
+  departmentId: number
+  departmentName: string
+  name: string
+  title: string
+  specialty: string | null
+  status: string
+  education?: string | null
+  experienceYears?: number | null
+  introduction: string | null
+  createdAt: string
+  updatedAt: string
 }
 
-/** 获取当前医生个人信息（§4.3） */
+function titleText(title: string): string {
+  const map: Record<string, string> = {
+    CHIEF: '主任医师',
+    DEPUTY_CHIEF: '副主任医师',
+    ATTENDING: '主治医师',
+    RESIDENT: '住院医师',
+  }
+  return map[title] ?? title
+}
+
+function toDoctorProfile(doctor: BackendDoctorResponse): DoctorProfile {
+  return {
+    doctorId: doctor.id,
+    doctorName: doctor.name,
+    title: titleText(doctor.title),
+    departmentId: doctor.departmentId,
+    departmentName: doctor.departmentName,
+    gender: 'MALE',
+    phone: '',
+    email: '',
+    specialty: doctor.specialty ?? '',
+    introduction: doctor.introduction ?? '',
+    status: doctor.status === 'ENABLED' ? 'ACTIVE' : 'DISABLED',
+    createdAt: doctor.createdAt,
+    updatedAt: doctor.updatedAt,
+  }
+}
+
+export async function getCurrentDoctor(): Promise<BackendDoctorResponse> {
+  const auth = useAuthStore()
+  const userId = auth.userInfo?.userId
+  if (!userId) {
+    throw new Error('当前医生未登录')
+  }
+
+  const res = await apiClient.get('/doctors', {
+    params: { page: 1, pageSize: 100 },
+  })
+  const page = parseApiResponse<PageResponse<BackendDoctorResponse>>(res.data)
+  const doctor = page.items.find((item) => item.userId === userId)
+  if (!doctor) {
+    throw new Error('当前登录账号没有关联医生档案')
+  }
+  return doctor
+}
+
 export async function getDoctorProfile(): Promise<DoctorProfile> {
-  console.warn('[MOCK] /api/doctors/me 后端未就绪，使用本地虚构演示数据')
-  await delay(300)
-  return getMockDoctorProfile()
-
-  // 后端就绪后替换为：
-  // const res = await apiClient.get('/doctors/me')
-  // return parseApiResponse(res.data)
+  return toDoctorProfile(await getCurrentDoctor())
 }
 
-/** 更新当前医生可编辑的个人信息（§4.3：擅长方向、简介等） */
 export async function updateDoctorProfile(
   payload: DoctorProfileUpdateRequest,
 ): Promise<DoctorProfile> {
-  console.warn('[MOCK] /api/doctors/me PUT 后端未就绪，使用本地虚构演示数据')
-  await delay(400)
-  return updateMockDoctorProfile(payload)
-
-  // 后端就绪后替换为：
-  // const res = await apiClient.put('/doctors/me', payload)
-  // return parseApiResponse(res.data)
+  const res = await apiClient.put('/doctors/me/profile', {
+    specialty: payload.specialty,
+    introduction: payload.introduction,
+  })
+  return toDoctorProfile(parseApiResponse<BackendDoctorResponse>(res.data))
 }
 
-/** 查询当前医生排班（§8.3：医生仅查看本人排班） */
 export async function getDoctorSchedules(): Promise<ScheduleResponse[]> {
-  console.warn('[MOCK] /api/schedules/doctor/{id} 后端未就绪，使用本地虚构演示数据')
-  await delay(300)
-  return getMockDoctorSchedules(getCurrentDoctorId())
-
-  // 后端就绪后替换为：
-  // const res = await apiClient.get('/schedules/doctor/me')
-  // return parseApiResponse(res.data)
+  const doctor = await getCurrentDoctor()
+  const res = await apiClient.get(`/schedules/doctor/${doctor.id}`, {
+    params: { page: 1, size: 100 },
+  })
+  const page = parseApiResponse<PageResponse<ScheduleResponse>>(res.data)
+  return page.items
 }
 
-/** 查询当前医生今日排班 */
 export async function getDoctorTodaySchedules(): Promise<ScheduleResponse[]> {
-  await delay(200)
   const today = new Date().toISOString().slice(0, 10)
-  return getMockDoctorSchedules(getCurrentDoctorId()).filter(
-    (s) => s.scheduleDate === today,
-  )
+  const schedules = await getDoctorSchedules()
+  return schedules.filter((s) => s.scheduleDate === today)
 }
