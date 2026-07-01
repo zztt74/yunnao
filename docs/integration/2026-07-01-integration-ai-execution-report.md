@@ -3,12 +3,14 @@
 日期：2026-07-01  
 分支：`codex/integration`  
 基线提交：`89ba8d3 feat(backend): deliver B1-B8 admin/doctor/device/triage/audit/patient APIs`
+最新收尾提交：`ed3801e feat: complete admin user profile integration`
 
 ## 1. 当前结论
 
 本轮报告中的 mock 阻塞点已转为真实接口闭环，并完成动态复跑：
 
 - 管理端用户管理：列表、创建、更新、状态变更、重置密码。
+- 管理端用户资料字段：`realName`、`phone`、`email` 已通过 `user_account` 增量迁移持久化。
 - 管理端设备管理：设备新增、编辑。
 - 管理端分诊记录：管理员全量分页查询。
 - 管理端 AI 调用日志：审计表分页查询。
@@ -17,7 +19,7 @@
 - AI Provider：已验证真实 HTTP Provider smoke；已验证 non-json、invalid-schema、timeout 故障注入降级。
 - OpenAPI：新增接口已同步，Redocly 校验无 warning。
 
-本轮没有修改数据库 Flyway 基线，没有扩展既有状态机，没有把 AI Key 写入仓库或报告。
+本轮没有修改数据库 Flyway 基线脚本；新增增量迁移 `V073__user_account_profile_fields.sql`。没有扩展既有状态机，没有把 AI Key 写入仓库或报告。
 
 ## 2. 已完成代码项
 
@@ -33,12 +35,13 @@
 - `GET /api/triage`
 - `GET /api/audit/ai/invocations`
 - `PUT /api/doctors/me/profile`
+- `V073__user_account_profile_fields.sql`
 
 前端新增/修改：
 
 - `frontend/src/api/admin.ts` 已移除所有 `unsupportedAdminFeature(...)` 调用。
 - `frontend/src/api/doctor.ts` 的 `updateDoctorProfile` 已接真实接口。
-- `frontend/src/views/admin/AdminUsersView.vue` 密码长度校验已与后端 8 位最小长度一致。
+- `frontend/src/views/admin/AdminUsersView.vue` 密码长度校验已与后端 8 位最小长度一致，并已支持创建医生账号所需科室、职称、擅长、学历、年限、简介字段。
 
 联调脚本新增/修改：
 
@@ -49,6 +52,7 @@
 契约新增/修改：
 
 - `contracts/openapi.yaml` 补充上述新增联调接口。
+- `contracts/openapi.yaml` 已同步管理端用户 `realName/phone/email` 与 `doctorTitle` 枚举。
 - `redocly.yaml` 关闭既有 Spring 静态/变量路径导致的 `no-ambiguous-paths` 噪声；新增接口均补充 4XX 响应。
 
 ## 3. 验证结果
@@ -60,7 +64,7 @@
 | 前端单测 | `npm test -- --run` in `frontend` | 通过，2 files / 8 tests |
 | 前端构建 | `npm run build` in `frontend` | 通过；仍有第三方 Rolldown annotation 和 chunk size warning |
 | 后端编译 | `mvn -q -DskipTests compile` in `backend` | 通过 |
-| 后端测试 | `mvn test` in `backend` | 通过，387 tests |
+| 后端测试 | `mvn test` in `backend` | 通过，388 tests |
 | Docker 重建 | `docker compose up -d --build mysql backend frontend` | 通过 |
 | Docker 状态 | `docker compose ps` | mysql/backend healthy，frontend up |
 | 真实 API 冒烟 | `node tests/integration/smoke-real-api.mjs` | 通过 |
@@ -155,7 +159,8 @@ patient_seed / PatientSeed9!2026
 
 ## 6. 剩余风险
 
-- 新增后台管理接口未引入数据库字段，因此 `realName`、`phone`、`email` 对非患者/医生账号仅做最小响应适配；后续如要正式用户档案，需要后端 AI 设计持久化边界。
+- B3 高敏感管理员操作审计日志本轮按用户确认不补，保留为后续安全合规建议。
+- B3 角色 DOCTOR↔ADMIN 变更本轮按用户确认不联动 Doctor/DoctorProfile，保留为后续业务规则决策。
 - 管理端分诊记录当前返回 `patient-<id>` 作为显示名，不伪造患者姓名；如页面必须显示真实姓名，需要后端 AI 提供分诊记录关联患者姓名的只读聚合 DTO。
 - 本轮未做页面级浏览器截图验证；API、构建和端到端脚本均已通过。
 

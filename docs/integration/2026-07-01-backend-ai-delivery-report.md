@@ -17,11 +17,11 @@ mvn test
 结果：
 
 ```
-Tests run: 387, Failures: 0, Errors: 0, Skipped: 0
+Tests run: 388, Failures: 0, Errors: 0, Skipped: 0
 BUILD SUCCESS
 ```
 
-原 360 个测试 + B1–B8 新增 21 个 + 复查后新增 6 个（1 设备 departmentId 校验 + 5 AdminUserController 权限 MockMvc），全部通过，无回归。
+原 360 个测试 + B1–B8 新增 21 个 + 复查后新增 6 个 + Q2/Q6 收尾新增 1 个，全部通过，无回归。
 
 git 分支状态：
 
@@ -40,7 +40,7 @@ git 分支状态：
 | B2 | PUT | `/api/devices/{id}` | ADMIN | 更新设备档案基础信息（不改 status/code） |
 | B3 | GET | `/api/admin/users` | ADMIN | 用户分页列表（角色/状态/关键字筛选） |
 | B3 | POST | `/api/admin/users` | ADMIN | 创建用户（ADMIN/DOCTOR，PATIENT 拒绝） |
-| B3 | PUT | `/api/admin/users/{id}` | ADMIN | 更新用户（第一阶段仅角色） |
+| B3 | PUT | `/api/admin/users/{id}` | ADMIN | 更新用户（角色 + realName/phone/email；不联动医生档案） |
 | B3 | POST | `/api/admin/users/{id}/status` | ADMIN | 启用/禁用/锁定 |
 | B3 | POST | `/api/admin/users/{id}/reset-password` | ADMIN | 重置密码 |
 | B4 | GET | `/api/triage` | ADMIN | 全量分诊记录分页（患者/优先级/科室/时间筛选） |
@@ -82,17 +82,19 @@ git 分支状态：
 - `device/exception/DeviceErrorCode.java` — 新增 `DEVICE_DEPARTMENT_NOT_FOUND`(404)
 - `device/service/DeviceServiceTest.java` — 补 departmentId mock + 1 个校验测试
 - `user/service/AdminUserService.java` — createAdmin save 包 try-catch 转 409（用户名并发竞态兜底）
+- `auth/entity/UserAccount.java`、`db/migration/V073__user_account_profile_fields.sql` — Q2 收尾：新增并持久化 `real_name`/`phone`/`email`
+- `frontend/src/views/admin/AdminUsersView.vue`、`frontend/src/api/admin.ts`、`contracts/openapi.yaml` — Q6 收尾：创建医生账号字段与前端/契约对齐
 
 ---
 
 ## 4. 数据库是否需要变更
 
-**不需要变更数据库基线。** 所有任务均基于现有表结构实现，未新增/修改表或字段。
+**已通过增量 Flyway 迁移变更数据库。** 未修改既有基线脚本；新增 `V073__user_account_profile_fields.sql`，为 `user_account` 增加 `real_name`、`phone`、`email`，用于管理端用户资料持久化。
 
 两点字段映射差异（已在设计笔记记录，需联调 AI/契约组确认是否后续扩展）：
 
 1. **B2 设备字段**：任务书建议 `category`/`applicableItems`/`enabled`，现有 `device` 表为 `type`/（无）/`status`。实现按现有字段：`category→type`、`enabled→status(DISABLED)`、`applicableItems` 暂不实现。
-2. **B3 用户字段**：`user_account` 表无 `realName`/`phone`/`email` 字段，任务书要求「更新姓名/手机/邮箱」无法完整实现。第一阶段仅交付角色更新 + 状态 + 重置密码 + 列表 + 创建。姓名/手机/邮箱待联调 AI 确认是否扩展表结构（需走数据库基线变更流程）。
+2. **B3 用户字段**：已按联调确认扩展 `user_account.real_name/phone/email`，管理端创建、列表、更新均已持久化并返回这些字段。
 
 ---
 
@@ -114,22 +116,16 @@ git 分支状态：
 ## 6. 仍未完成或需前端/契约组配合的事项
 
 ### 需联调 AI 同步 OpenAPI 主契约
-以下新接口未进 OpenAPI 主契约（遵循任务书「不擅自扩展主契约」），需联调 AI 同步：
-- B1 `PUT /api/doctors/me`
-- B2 `POST/PUT /api/devices`、`/api/devices/{id}`
-- B3 `/api/admin/users` 全套（5 个接口）
-- B4 `GET /api/triage`
-- B5 `GET /api/audit/ai/invocations`
-- B7 `GET /api/patients`
+已由联调 AI 同步到 `contracts/openapi.yaml`，并通过 `tests/contract` OpenAPI 校验。当前无后端任务书范围内的 OpenAPI 阻塞项。
 
 ### 需前端 AI 配合
 - **B6**：`DashboardSummary` 新增 `totalPatientCount` 字段（record 加字段，前向变更），前端需同步读取，不再显示固定 0。
 - **B2**：前端设备创建/更新表单按现有字段（`type` 而非 `category`，无 `applicableItems`/`enabled`）。
-- **B3**：前端用户管理表单，第一阶段「姓名/手机/邮箱」编辑项暂不可用（后端无字段），可先隐藏或置灰，待表结构扩展后启用。
+- **B3**：用户管理表单的 `realName/phone/email` 与创建医生字段已由联调收尾对齐。角色变更按本轮决策不联动 Doctor/DoctorProfile。
 
 ### 待契约组决策
 - B8：分页主参数名最终收敛为 `pageSize` 或 `size`（当前新接口两者兼容）。
-- B2/B3 字段扩展：是否扩展 `device`/`user_account` 表以对齐任务书字段。
+- B2 字段扩展：是否扩展 `device.applicableItems`、是否把 `type` 重命名/映射为 `category`，后续如做需单独走变更。
 
 ---
 
@@ -144,9 +140,9 @@ git 分支状态：
 DeviceUpdateRequest：同上但无 `code`（不可改），无 `status`（走状态接口）。
 
 ### B3 AdminUserCreateRequest
-`username`(必填,max64), `password`(必填,8-64), `role`(必填,ADMIN/DOCTOR), `departmentId`/`doctorName`/`doctorTitle`/`specialty`/`education`/`experienceYears`/`introduction`（DOCTOR 时 departmentId+doctorName 必填）
+`username`(必填,max64), `password`(必填,8-64), `role`(必填,ADMIN/DOCTOR), `realName`/`phone`/`email`, `departmentId`/`doctorName`/`doctorTitle`/`specialty`/`education`/`experienceYears`/`introduction`（DOCTOR 时 departmentId 必填，doctorName 可由 realName 回填；doctorTitle 默认 ATTENDING）
 
-AdminUserResponse：`id, username, enabled, accountNonLocked, accountNonExpired, credentialsNonExpired, mustChangePassword, roles(Set<String>), createdAt, updatedAt`（不含 passwordHash、tokenVersion）
+AdminUserResponse：`id, username, realName, phone, email, enabled, accountNonLocked, accountNonExpired, credentialsNonExpired, mustChangePassword, roles(Set<String>), createdAt, updatedAt`（不含 passwordHash、tokenVersion）
 
 UserStatusChangeRequest：`action`(ENABLE/DISABLE/LOCK)
 ResetPasswordRequest：`newPassword`(8-64)
@@ -160,7 +156,7 @@ ResetPasswordRequest：`newPassword`(8-64)
 
 ## 8. 复查与自处理（2026-07-01）
 
-B1–B8 交付后做了一轮逐文件复查 + 重跑测试，结果：387 tests pass（原 360 + B1–B8 新增 21 + 复查后新增 6），BUILD SUCCESS，无回归。
+B1–B8 交付后做了一轮逐文件复查 + 重跑测试，随后完成 Q2/Q6 收尾并再次重跑，结果：388 tests pass，BUILD SUCCESS，无回归。
 
 复查遵循任务书红线（不擅自改 DB 基线、不擅自扩 OpenAPI、不擅自改前端、不擅自扩医疗业务规则），对能自己查证/修复的项直接处理，只保留真正需他人决策的项。
 
@@ -175,15 +171,13 @@ B1–B8 交付后做了一轮逐文件复查 + 重跑测试，结果：387 tests
 4. `DeviceService` 注入 `DepartmentRepository`，createDevice/updateDevice 加 `validateDepartment` 存在性校验；新增错误码 `DEVICE_DEPARTMENT_NOT_FOUND`(404)。
 5. 新增 `AdminUserControllerTest`（MockMvc，5 个权限测试：非管理员 403×3、管理员 200、分页 page=2→0-based 转换），验证 `GlobalExceptionHandler` 把 `BusinessException("PERMISSION_DENIED",403)` 正确转 HTTP 403。
 
-### 仍需他人确认（7 项，均有职责边界限制）
+### 仍需后续单独立项（非本轮后端阻塞）
 详见 `2026-07-01-backend-ai-thoughts-and-questions.md` 第九节，要点：
-- UserAccount 表扩 `realName`/`phone`/`email`（B3 姓名手机邮箱更新，需走 DB 基线变更流程）。
 - device 表扩 `applicableItems`、字段名对齐 `category`（B2，需走变更流程）。
-- OpenAPI 主契约同步 B1/B2/B3/B4/B5/B7 新接口（联调 AI 职责）。
 - 分页主参数名收敛 `pageSize` 或 `size`（契约组决策）。
-- B3 角色 DOCTOR→ADMIN 变更时 Doctor 档案孤儿处理（医疗业务规则，不擅自扩）。
-- B6 `DashboardSummary` 加字段前向变更告知前端。
-- 创建 DOCTOR 字段集合与前端表单对齐。
+- B3 高敏感操作审计日志（用户已确认本轮不补）。
+- B3 角色 DOCTOR↔ADMIN 变更时 Doctor 档案联动（用户已确认本轮不联动）。
+- 权限校验风格、通用错误码、traceId 包装等架构级收敛。
 
 ### 复查结论
 B1–B8 全部满足任务书验收标准，无阻塞项。上述自处理改动已在第 3 节「复查后补充改动」列出文件清单。
