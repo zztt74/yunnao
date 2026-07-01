@@ -21,6 +21,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -52,8 +56,8 @@ class AIMedicalRecordServiceImplTest {
     void setUp() {
         JsonSchemaParser parser = new JsonSchemaParser(new ObjectMapper());
         service = new AIMedicalRecordServiceImpl(recorder, parser, promptManager);
-        when(promptManager.getPrompt(anyString())).thenReturn("system prompt");
-        when(promptManager.getPromptVersion(anyString())).thenReturn("v1");
+        lenient().when(promptManager.getPrompt(anyString(), nullable(String.class))).thenReturn("system prompt");
+        lenient().when(promptManager.getPromptVersion(anyString(), nullable(String.class))).thenReturn("v1");
     }
 
     @Test
@@ -61,7 +65,7 @@ class AIMedicalRecordServiceImplTest {
     void generate_normal_returnsDraft() {
         MedicalRecordAIRequest request = new MedicalRecordAIRequest(
                 "头痛", "持续3天", "无", "无异常",
-                List.of("偏头痛"), "对症止痛");
+                List.of("偏头痛"), "对症止痛", null, null);
 
         when(recorder.invoke(any(), any())).thenAnswer(invocation -> {
             java.util.function.Function<String, MedicalRecordAIResult> parser = invocation.getArgument(1);
@@ -88,7 +92,7 @@ class AIMedicalRecordServiceImplTest {
     void generate_highRisk_returnsUrgentDraft() {
         MedicalRecordAIRequest request = new MedicalRecordAIRequest(
                 "胸痛伴大汗", "突发胸痛持续不缓解", "高血压史", null,
-                null, null);
+                null, null, null, null);
 
         when(recorder.invoke(any(), any())).thenAnswer(invocation -> {
             java.util.function.Function<String, MedicalRecordAIResult> parser = invocation.getArgument(1);
@@ -112,7 +116,7 @@ class AIMedicalRecordServiceImplTest {
     @DisplayName("空结果：空输入返回空字段而非编造")
     void generate_emptyInput_returnsEmptyFields() {
         MedicalRecordAIRequest request = new MedicalRecordAIRequest(
-                null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null);
 
         when(recorder.invoke(any(), any())).thenAnswer(invocation -> {
             java.util.function.Function<String, MedicalRecordAIResult> parser = invocation.getArgument(1);
@@ -137,7 +141,7 @@ class AIMedicalRecordServiceImplTest {
     @DisplayName("超时：Provider 超时降级为 BusinessException 504")
     void generate_timeout_throwsBusinessException504() {
         MedicalRecordAIRequest request = new MedicalRecordAIRequest(
-                "发热", "发热2天", null, null, null, null);
+                "发热", "发热2天", null, null, null, null, null, null);
 
         when(recorder.invoke(any(), any()))
                 .thenThrow(new AIProviderException("Mock 超时", true, null));
@@ -155,7 +159,7 @@ class AIMedicalRecordServiceImplTest {
     @DisplayName("非法 JSON：响应非法降级为 BusinessException 500")
     void generate_invalidJson_throwsBusinessException500() {
         MedicalRecordAIRequest request = new MedicalRecordAIRequest(
-                "头痛", null, null, null, null, null);
+                "头痛", null, null, null, null, null, null, null);
 
         when(recorder.invoke(any(), any()))
                 .thenThrow(new AIInvalidResponseException("AI 响应非合法 JSON"));
@@ -173,7 +177,7 @@ class AIMedicalRecordServiceImplTest {
     @DisplayName("异常：Provider 异常降级为 BusinessException 504")
     void generate_providerError_throwsBusinessException504() {
         MedicalRecordAIRequest request = new MedicalRecordAIRequest(
-                "发热", null, null, null, null, null);
+                "发热", null, null, null, null, null, null, null);
 
         when(recorder.invoke(any(), any()))
                 .thenThrow(new AIProviderException("500 错误", false, 500));
@@ -191,7 +195,7 @@ class AIMedicalRecordServiceImplTest {
     @DisplayName("缺失必填字段 treatmentSuggestion 抛出 BusinessException")
     void generate_missingRequiredField_throwsBusinessException() {
         MedicalRecordAIRequest request = new MedicalRecordAIRequest(
-                "头痛", null, null, null, null, null);
+                "头痛", null, null, null, null, null, null, null);
 
         when(recorder.invoke(any(), any())).thenAnswer(invocation -> {
             java.util.function.Function<String, MedicalRecordAIResult> parser = invocation.getArgument(1);
@@ -210,5 +214,71 @@ class AIMedicalRecordServiceImplTest {
                     assertThat(be.getCode()).isEqualTo("AI_MEDICAL_RECORD_FAILED");
                     assertThat(be.getHttpStatus()).isEqualTo(500);
                 });
+    }
+
+    @Test
+    @DisplayName("B5：带问诊对话记录生成病历")
+    void generate_withTranscript_extractsFromDialogue() {
+        MedicalRecordAIRequest request = new MedicalRecordAIRequest(
+                null, null, null, null, null, null,
+                "医生：您哪里不舒服？\n患者：头痛3天了，伴有恶心。\n医生：之前有过类似情况吗？\n患者：没有。",
+                null);
+
+        when(recorder.invoke(any(), any())).thenAnswer(invocation -> {
+            java.util.function.Function<String, MedicalRecordAIResult> parser = invocation.getArgument(1);
+            String json = "{\"chiefComplaint\":\"头痛3天伴恶心\",\"presentIllness\":\"患者3天前出现头痛，伴恶心\","
+                    + "\"pastHistory\":\"无类似病史\",\"physicalExamination\":\"待查\","
+                    + "\"preliminaryDiagnosis\":\"偏头痛待排\",\"treatmentSuggestion\":\"对症止痛，建议复查\"}";
+            return new AIInvocationRecorder.InvokeResult<>(parser.apply(json), true, 1L);
+        });
+
+        MedicalRecordAIResult result = service.generate(request);
+
+        assertThat(result.chiefComplaint()).contains("头痛");
+        assertThat(result.presentIllness()).contains("3天");
+    }
+
+    @Test
+    @DisplayName("B6：按科室选择专用 prompt")
+    void generate_withDepartmentCode_usesDepartmentPrompt() {
+        MedicalRecordAIRequest request = new MedicalRecordAIRequest(
+                "发热", "2天", null, null, null, null, null, "DEPT_PEDIATRICS");
+
+        when(promptManager.getPrompt(eq("medical_record"), eq("DEPT_PEDIATRICS")))
+                .thenReturn("儿科专用 prompt");
+        when(promptManager.getPromptVersion(eq("medical_record"), eq("DEPT_PEDIATRICS")))
+                .thenReturn("v1-pediatrics");
+        when(recorder.invoke(any(), any())).thenAnswer(invocation -> {
+            java.util.function.Function<String, MedicalRecordAIResult> parser = invocation.getArgument(1);
+            String json = "{\"chiefComplaint\":\"发热\",\"presentIllness\":\"2天\","
+                    + "\"pastHistory\":\"\",\"physicalExamination\":\"待查\","
+                    + "\"preliminaryDiagnosis\":\"上感\",\"treatmentSuggestion\":\"对症治疗\"}";
+            return new AIInvocationRecorder.InvokeResult<>(parser.apply(json), true, 1L);
+        });
+
+        MedicalRecordAIResult result = service.generate(request);
+
+        assertThat(result.chiefComplaint()).isEqualTo("发热");
+        verify(promptManager).getPrompt("medical_record", "DEPT_PEDIATRICS");
+    }
+
+    @Test
+    @DisplayName("B6：未知科室时仍能正常生成（回退由 PromptManager 内部处理）")
+    void generate_unknownDepartment_fallsBackToGeneric() {
+        MedicalRecordAIRequest request = new MedicalRecordAIRequest(
+                "头痛", null, null, null, null, null, null, "DEPT_UNKNOWN");
+
+        when(recorder.invoke(any(), any())).thenAnswer(invocation -> {
+            java.util.function.Function<String, MedicalRecordAIResult> parser = invocation.getArgument(1);
+            String json = "{\"chiefComplaint\":\"头痛\",\"presentIllness\":\"\","
+                    + "\"pastHistory\":\"\",\"physicalExamination\":\"\","
+                    + "\"preliminaryDiagnosis\":\"\",\"treatmentSuggestion\":\"\"}";
+            return new AIInvocationRecorder.InvokeResult<>(parser.apply(json), true, 1L);
+        });
+
+        MedicalRecordAIResult result = service.generate(request);
+
+        assertThat(result.chiefComplaint()).isEqualTo("头痛");
+        verify(promptManager).getPrompt(eq("medical_record"), eq("DEPT_UNKNOWN"));
     }
 }

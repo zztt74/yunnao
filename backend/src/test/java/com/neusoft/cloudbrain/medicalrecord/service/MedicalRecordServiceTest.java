@@ -4,6 +4,8 @@ import com.neusoft.cloudbrain.ai.api.AIMedicalRecordService;
 import com.neusoft.cloudbrain.ai.dto.MedicalRecordAIRequest;
 import com.neusoft.cloudbrain.ai.dto.MedicalRecordAIResult;
 import com.neusoft.cloudbrain.common.exception.BusinessException;
+import com.neusoft.cloudbrain.department.entity.Department;
+import com.neusoft.cloudbrain.department.repository.DepartmentRepository;
 import com.neusoft.cloudbrain.doctor.entity.Doctor;
 import com.neusoft.cloudbrain.doctor.repository.DoctorRepository;
 import com.neusoft.cloudbrain.encounter.entity.Encounter;
@@ -64,6 +66,9 @@ class MedicalRecordServiceTest {
     private PatientRepository patientRepository;
 
     @Mock
+    private DepartmentRepository departmentRepository;
+
+    @Mock
     private AIMedicalRecordService aiMedicalRecordService;
 
     @InjectMocks
@@ -71,6 +76,7 @@ class MedicalRecordServiceTest {
 
     private Encounter testEncounter;
     private Doctor testDoctor;
+    private Department testDepartment;
     private MedicalRecord testDraftRecord;
     private MedicalRecord testAIRecord;
     private MedicalRecord testConfirmedRecord;
@@ -83,6 +89,13 @@ class MedicalRecordServiceTest {
                 .departmentId(1L)
                 .name("张医生")
                 .title("ATTENDING")
+                .status("ENABLED")
+                .build();
+
+        testDepartment = Department.builder()
+                .id(1L)
+                .code("DEPT_INTERNAL")
+                .name("内科")
                 .status("ENABLED")
                 .build();
 
@@ -186,10 +199,11 @@ class MedicalRecordServiceTest {
     void generateByAI_shouldCreateAIGeneratedRecord() {
         MedicalRecordGenerateRequest request = new MedicalRecordGenerateRequest(
                 1L, "头痛 3 天", "持续性胀痛", "无特殊", "神经系统无异常",
-                List.of("偏头痛"), "对症治疗");
+                List.of("偏头痛"), "对症治疗", null);
 
         when(encounterRepository.findById(1L)).thenReturn(Optional.of(testEncounter));
         when(doctorRepository.findById(1L)).thenReturn(Optional.of(testDoctor));
+        when(departmentRepository.findById(1L)).thenReturn(Optional.of(testDepartment));
 
         MedicalRecordAIResult aiResult = new MedicalRecordAIResult(
                 "头痛 3 天", "持续性胀痛", "无特殊", "神经系统无异常",
@@ -214,10 +228,11 @@ class MedicalRecordServiceTest {
     @DisplayName("AI 生成 - AI 失败时抛出 BusinessException")
     void generateByAI_shouldThrowWhenAIFails() {
         MedicalRecordGenerateRequest request = new MedicalRecordGenerateRequest(
-                1L, "头痛 3 天", "持续性胀痛", null, null, null, null);
+                1L, "头痛 3 天", "持续性胀痛", null, null, null, null, null);
 
         when(encounterRepository.findById(1L)).thenReturn(Optional.of(testEncounter));
         when(doctorRepository.findById(1L)).thenReturn(Optional.of(testDoctor));
+        when(departmentRepository.findById(1L)).thenReturn(Optional.of(testDepartment));
         when(aiMedicalRecordService.generate(any(MedicalRecordAIRequest.class)))
                 .thenThrow(new BusinessException("AI_GENERATION_FAILED", "AI 生成失败", 500));
 

@@ -7,6 +7,8 @@ import com.neusoft.cloudbrain.ai.dto.MedicalRecordAIResult;
 import com.neusoft.cloudbrain.auth.dto.AuthPrincipal;
 import com.neusoft.cloudbrain.auth.security.SecurityUtils;
 import com.neusoft.cloudbrain.common.exception.BusinessException;
+import com.neusoft.cloudbrain.department.entity.Department;
+import com.neusoft.cloudbrain.department.repository.DepartmentRepository;
 import com.neusoft.cloudbrain.doctor.entity.Doctor;
 import com.neusoft.cloudbrain.doctor.repository.DoctorRepository;
 import com.neusoft.cloudbrain.encounter.entity.Encounter;
@@ -63,6 +65,7 @@ public class MedicalRecordService {
     private final EncounterRepository encounterRepository;
     private final DoctorRepository doctorRepository;
     private final PatientRepository patientRepository;
+    private final DepartmentRepository departmentRepository;
     private final AIMedicalRecordService aiMedicalRecordService;
 
     // ============================================================
@@ -124,13 +127,24 @@ public class MedicalRecordService {
         Doctor doctor = validateDoctorOwnership(encounter.getDoctorId());
 
         // 2. 调用 AI 生成
+        // B6：从就诊获取科室 code，用于按科室选择专用 prompt
+        String departmentCode = null;
+        if (encounter.getDepartmentId() != null) {
+            Department department = departmentRepository.findById(encounter.getDepartmentId()).orElse(null);
+            if (department != null) {
+                departmentCode = department.getCode();
+            }
+        }
+
         MedicalRecordAIRequest aiRequest = new MedicalRecordAIRequest(
                 request.chiefComplaint(),
                 request.presentIllness(),
                 request.pastHistory(),
                 request.physicalExamination(),
                 request.preliminaryDiagnoses(),
-                request.treatmentSuggestion());
+                request.treatmentSuggestion(),
+                request.consultationTranscript(),
+                departmentCode);
 
         MedicalRecordAIResult aiResult;
         try {

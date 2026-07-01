@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -30,6 +31,12 @@ public class PromptManager {
 
     private static final String PROMPT_LOCATION = "classpath:prompts/*_v*.txt";
 
+    /**
+     * 已知 capability 列表（从长到短匹配，避免 medical_record 被误分割为 medical + record）
+     */
+    private static final List<String> KNOWN_CAPABILITIES = List.of(
+            "medical_record", "prescription_review", "result_interpretation", "diagnosis", "triage");
+
     private final Map<String, PromptEntry> promptCache = new ConcurrentHashMap<>();
 
     @PostConstruct
@@ -49,10 +56,11 @@ public class PromptManager {
                 }
                 String content = new String(resource.getInputStream().readAllBytes(),
                         StandardCharsets.UTF_8);
-                PromptEntry existing = promptCache.get(parsed.capability);
-                if (existing == null || parsed.version > existing.version) {
-                    promptCache.put(parsed.capability,
-                            new PromptEntry(content, parsed.version, parsed.versionString));
+                String key = buildCacheKey(parsed.capability, parsed.departmentCode);
+                PromptEntry existing = promptCache.get(key);
+                if (existing == null || parsed.version > existing.version()) {
+                    promptCache.put(key,
+                            new PromptEntry(content, parsed.version, parsed.versionString, parsed.departmentCode));
                 }
             }
             log.info("已加载 {} 个 system prompt: {}", promptCache.size(), promptCache.keySet());
@@ -62,23 +70,76 @@ public class PromptManager {
     }
 
     /**
-     * 获取指定 capability 的 prompt 内容
+     * 获取指定 capability 的通用 prompt 内容
      */
     public String getPrompt(String capability) {
-        PromptEntry entry = promptCache.get(capability);
+        PromptEntry entry = promptCache.get(buildCacheKey(capability, null));
         return entry != null ? entry.content() : null;
     }
 
     /**
-     * 获取指定 capability 的 prompt 版本（如 "v1"）
+     * 获取指定 capability 的通用 prompt 版本（如 "v1"）
      */
     public String getPromptVersion(String capability) {
-        PromptEntry entry = promptCache.get(capability);
+        PromptEntry entry = promptCache.get(buildCacheKey(capability, null));
         return entry != null ? entry.versionString() : null;
     }
 
     /**
-     * 解析文件名 {capability}_v{version}.txt
+     * 按科室获取专用 prompt（B6）
+     *
+     * 查找顺序：
+     * 1. {capability}_{departmentCode小写}_v{version}.txt（科室专用）
+     * 2. {capability}_v{version}.txt（通用回退）
+     *
+     * 找不到科室专用时回退到通用，不因找不到科室模板导致 AI 调用失败。
+     */
+    public String getPrompt(String capability, String departmentCode) {
+        if (departmentCode != null && !departmentCode.isBlank()) {
+            String normalizedCode = departmentCode.toLowerCase();
+            PromptEntry deptEntry = promptCache.get(buildCacheKey(capability, normalizedCode));
+            if (deptEntry != null) {
+                return deptEntry.content();
+            }
+        }
+        return getPrompt(capability);
+    }
+
+    /**
+     * 按科室获取专用 prompt 版本
+     */
+    public String getPromptVersion(String capability, String departmentCode) {
+        if (departmentCode != null && !departmentCode.isBlank()) {
+            String normalizedCode = departmentCode.toLowerCase();
+            PromptEntry deptEntry = promptCache.get(buildCacheKey(capability, normalizedCode));
+            if (deptEntry != null) {
+                return deptEntry.versionString();
+            }
+        }
+        return getPromptVersion(capability);
+    }
+
+    /**
+     * 构建缓存 key
+     *
+     * 通用 prompt: {capability}
+     * 科室专用: {capability}__{departmentCode}
+     */
+    private String buildCacheKey(String capability, String departmentCode) {
+        if (departmentCode == null || departmentCode.isBlank()) {
+            return capability;
+        }
+        return capability + "__" + departmentCode;
+    }
+
+    /**
+     * 解析文件名
+     *
+     * 通用：{capability}_v{version}.txt
+     * 科室专用：{capability}_{departmentCode}_v{version}.txt
+     *
+     * 使用已知 capability 列表匹配前缀，避免含下划线的 capability（如 medical_record）被误分割。
+     * departmentCode 查找时统一转小写匹配。
      */
     private ParsedName parseFilename(String filename) {
         if (!filename.endsWith(".txt")) {
@@ -89,19 +150,30 @@ public class PromptManager {
         if (vIndex < 0) {
             return null;
         }
-        String capability = base.substring(0, vIndex);
         String versionStr = base.substring(vIndex + 2);
         try {
             int version = Integer.parseInt(versionStr);
-            return new ParsedName(capability, version, "v" + version);
+            String prefix = base.substring(0, vIndex);
+
+            for (String cap : KNOWN_CAPABILITIES) {
+                if (prefix.equals(cap)) {
+                    return new ParsedName(cap, version, "v" + version, null);
+                }
+                if (prefix.startsWith(cap + "_")) {
+                    String deptCode = prefix.substring(cap.length() + 1).toLowerCase();
+                    return new ParsedName(cap, version, "v" + version, deptCode);
+                }
+            }
+            log.warn("未识别的 capability 前缀: {}", prefix);
+            return null;
         } catch (NumberFormatException e) {
             return null;
         }
     }
 
-    private record ParsedName(String capability, int version, String versionString) {
+    private record ParsedName(String capability, int version, String versionString, String departmentCode) {
     }
 
-    private record PromptEntry(String content, int version, String versionString) {
+    private record PromptEntry(String content, int version, String versionString, String departmentCode) {
     }
 }

@@ -45,20 +45,31 @@ public class AIMedicalRecordServiceImpl implements AIMedicalRecordService {
 
     @Override
     public MedicalRecordAIResult generate(MedicalRecordAIRequest request) {
-        String sanitizedInput = String.format(
+        StringBuilder inputBuilder = new StringBuilder();
+        inputBuilder.append(String.format(
                 "主诉: %s; 现病史: %s; 既往史: %s; 体格检查: %s; 初步诊断: %s; 治疗建议: %s",
                 safe(request.chiefComplaint()),
                 safe(request.presentIllness()),
                 safe(request.pastHistory()),
                 safe(request.physicalExamination()),
                 request.preliminaryDiagnoses() == null ? "" : String.join("、", request.preliminaryDiagnoses()),
-                safe(request.treatmentSuggestion()));
+                safe(request.treatmentSuggestion())));
+
+        // B5：问诊对话记录参与病历生成
+        if (request.consultationTranscript() != null && !request.consultationTranscript().isBlank()) {
+            inputBuilder.append("; 问诊对话记录: ").append(request.consultationTranscript());
+        }
+        String sanitizedInput = inputBuilder.toString();
+
+        // B6：按科室选择专用 prompt，找不到时回退到通用
+        String promptContent = promptManager.getPrompt(CAPABILITY, request.departmentCode());
+        String promptVersion = promptManager.getPromptVersion(CAPABILITY, request.departmentCode());
 
         AIInvocationRecorder.InvocationSpec spec = new AIInvocationRecorder.InvocationSpec(
                 CAPABILITY, CAPABILITY, null, null,
                 sanitizedInput,
-                promptManager.getPrompt(CAPABILITY),
-                promptManager.getPromptVersion(CAPABILITY));
+                promptContent,
+                promptVersion);
 
         try {
             AIInvocationRecorder.InvokeResult<MedicalRecordAIResult> result =

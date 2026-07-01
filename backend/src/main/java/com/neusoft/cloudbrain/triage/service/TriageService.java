@@ -16,6 +16,7 @@ import com.neusoft.cloudbrain.schedule.entity.Schedule;
 import com.neusoft.cloudbrain.schedule.repository.ScheduleRepository;
 import com.neusoft.cloudbrain.triage.dto.TriageAnalyzeRequest;
 import com.neusoft.cloudbrain.triage.dto.TriageAnalyzeResponse;
+import com.neusoft.cloudbrain.triage.dto.TriageRecommendedDoctorResponse;
 import com.neusoft.cloudbrain.triage.dto.TriageRecordResponse;
 import com.neusoft.cloudbrain.triage.entity.TriageRecord;
 import com.neusoft.cloudbrain.triage.exception.TriageErrorCode;
@@ -208,6 +209,61 @@ public class TriageService {
         checkPatientOwnership(patientId);
         return triageRecordRepository.findByPatientId(patientId, pageable)
                 .map(this::toRecordResponse);
+    }
+
+    /**
+     * 查询科室可预约医生列表（B3）
+     *
+     * 课程任务三要求分诊结果页直接展示推荐科室下的可预约医生卡片。
+     * 本方法按科室查询启用状态医生，并聚合其最近可预约排班摘要。
+     *
+     * 数据仅来自真实 doctor/schedule 表，不使用 mock。
+     * 无可用医生时返回空列表，不报 500。
+     */
+    @Transactional(readOnly = true)
+    public List<TriageRecommendedDoctorResponse> getRecommendedDoctors(Long departmentId, int limit) {
+        List<Doctor> doctors = doctorRepository.findByDepartmentIdAndStatus(departmentId, "ENABLED");
+        if (doctors.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        LocalDate today = LocalDate.now();
+        int resolvedLimit = Math.max(1, Math.min(limit, 10));
+
+        return doctors.stream()
+                .map(doctor -> toRecommendedDoctor(doctor, today, resolvedLimit))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 医生 + 最近可预约排班摘要
+     */
+    private TriageRecommendedDoctorResponse toRecommendedDoctor(Doctor doctor, LocalDate today, int limit) {
+        Department department = departmentRepository.findById(doctor.getDepartmentId()).orElse(null);
+
+        List<TriageRecommendedDoctorResponse.ScheduleSummary> schedules =
+                scheduleRepository.findByDoctorId(doctor.getId()).stream()
+                        .filter(s -> "AVAILABLE".equals(s.getStatus()))
+                        .filter(s -> s.getBookedCount() < s.getMaxAppointments())
+                        .filter(s -> s.getScheduleDate() == null || !s.getScheduleDate().isBefore(today))
+                        .sorted(java.util.Comparator.comparing(Schedule::getStartTime))
+                        .limit(limit)
+                        .map(s -> new TriageRecommendedDoctorResponse.ScheduleSummary(
+                                s.getId(),
+                                s.getScheduleDate(),
+                                s.getStartTime() != null ? s.getStartTime().toString() : null,
+                                s.getEndTime() != null ? s.getEndTime().toString() : null,
+                                s.getMaxAppointments() - s.getBookedCount()))
+                        .collect(Collectors.toList());
+
+        return new TriageRecommendedDoctorResponse(
+                doctor.getId(),
+                doctor.getName(),
+                doctor.getTitle(),
+                doctor.getDepartmentId(),
+                department != null ? department.getName() : null,
+                doctor.getSpecialty(),
+                schedules);
     }
 
     /**

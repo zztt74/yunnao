@@ -8,6 +8,7 @@ import com.neusoft.cloudbrain.common.api.PageUtils;
 import com.neusoft.cloudbrain.common.exception.BusinessException;
 import com.neusoft.cloudbrain.triage.dto.TriageAnalyzeRequest;
 import com.neusoft.cloudbrain.triage.dto.TriageAnalyzeResponse;
+import com.neusoft.cloudbrain.triage.dto.TriageRecommendedDoctorResponse;
 import com.neusoft.cloudbrain.triage.dto.TriageRecordResponse;
 import com.neusoft.cloudbrain.triage.service.TriageService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -21,11 +22,13 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 分诊接口
  *
- * - POST   /api/triage/analyze           AI 分诊分析
+ * - POST   /api/triage/analyze           AI 分诊分析（真实接口）
+ * - POST   /api/triage/consult           AI 分诊分析（课程兼容路径，等价于 /analyze）
  * - GET    /api/triage/{id}              分诊记录详情
  * - GET    /api/triage/patient/{patientId}  患者分诊记录列表
  */
@@ -47,6 +50,21 @@ public class TriageController {
      */
     @PostMapping("/analyze")
     public ApiResponse<TriageAnalyzeResponse> analyze(
+            @Valid @RequestBody TriageAnalyzeRequest request,
+            HttpServletRequest httpRequest) {
+        TriageAnalyzeResponse response = triageService.analyze(request);
+        return ApiResponse.success(response, (String) httpRequest.getAttribute("traceId"));
+    }
+
+    /**
+     * AI 分诊分析（课程兼容路径）
+     *
+     * 课程任务三示例路径为 /api/triage/consult，与真实接口 /api/triage/analyze 不一致。
+     * 本接口为兼容入口，直接复用 TriageService.analyze，不复制业务实现。
+     * 请求体和响应结构与 /api/triage/analyze 完全一致，保留 conversationId/history/round 多轮参数流转。
+     */
+    @PostMapping("/consult")
+    public ApiResponse<TriageAnalyzeResponse> consult(
             @Valid @RequestBody TriageAnalyzeRequest request,
             HttpServletRequest httpRequest) {
         TriageAnalyzeResponse response = triageService.analyze(request);
@@ -76,6 +94,23 @@ public class TriageController {
         Pageable pageable = PageRequest.of(Math.max(0, page - 1), Math.min(size, 100));
         Page<TriageRecordResponse> response = triageService.getTriageRecordsByPatient(patientId, pageable);
         return ApiResponse.success(PageResponse.from(response), (String) httpRequest.getAttribute("traceId"));
+    }
+
+    /**
+     * 查询科室可预约医生列表（B3）
+     *
+     * 课程任务三要求分诊结果页直接展示推荐科室下的可预约医生卡片。
+     * 返回医生 ID、科室 ID、姓名、职称、可预约日期/排班 ID、剩余号源摘要。
+     * 无可用医生时返回空列表，不报 500。
+     */
+    @GetMapping("/recommended-doctors")
+    public ApiResponse<List<TriageRecommendedDoctorResponse>> getRecommendedDoctors(
+            @RequestParam Long departmentId,
+            @RequestParam(defaultValue = "3") int limit,
+            HttpServletRequest httpRequest) {
+        List<TriageRecommendedDoctorResponse> response =
+                triageService.getRecommendedDoctors(departmentId, limit);
+        return ApiResponse.success(response, (String) httpRequest.getAttribute("traceId"));
     }
 
     /**
