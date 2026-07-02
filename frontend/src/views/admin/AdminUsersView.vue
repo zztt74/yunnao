@@ -194,8 +194,14 @@ function roleTagClass(role: UserRole): string {
   }
 }
 
-function formatDateTime(iso: string | null): string {
-  if (!iso) return '从未登录'
+function formatDateTime(iso: string | null | undefined): string {
+  // 严格区分：
+  //   - null       → 后端明确「从未登录」
+  //   - undefined  → 后端未下发该字段（旧版本契约），展示 '--'，
+  //                   避免被误识别为「从未登录」掩盖后端契约缺失问题
+  //   - string     → 正常格式化为本地时间
+  if (iso === null) return '从未登录'
+  if (iso === undefined || iso === '') return '--'
   try {
     return new Date(iso).toLocaleString('zh-CN', {
       year: 'numeric',

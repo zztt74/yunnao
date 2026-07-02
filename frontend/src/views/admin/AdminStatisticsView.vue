@@ -24,13 +24,21 @@ import type {
 } from '@/types/admin'
 
 const loading = ref(true)
-const loadError = ref('')
 const summary = ref<StatisticsSummary | null>(null)
 const trend = ref<StatisticsTrendItem[]>([])
 const departmentStats = ref<DepartmentStatItem[]>([])
 const doctorRanking = ref<DoctorRankingItem[]>([])
 const deviceUsage = ref<DeviceUsageStatItem[]>([])
 const aiCallStats = ref<AiCallStatItem | null>(null)
+
+// F-HW-08：每个统计区域独立的错误状态与重试入口；
+// 避免单个接口 500（如设备使用统计 SQL 抛错）通过 Promise.all 放大成整页崩溃。
+const summaryError = ref('')
+const trendError = ref('')
+const departmentError = ref('')
+const doctorError = ref('')
+const deviceError = ref('')
+const aiError = ref('')
 
 // 查询参数（当前使用默认范围）
 const query = ref<StatisticsQuery>({})
@@ -146,27 +154,116 @@ function aiTypeWidth(value: number): string {
 
 async function loadData() {
   loading.value = true
-  loadError.value = ''
+  // F-HW-08：每个接口独立 try/catch，单接口失败不影响其他区域。
+  summaryError.value = ''
+  trendError.value = ''
+  departmentError.value = ''
+  doctorError.value = ''
+  deviceError.value = ''
+  aiError.value = ''
+
+  const tasks: Array<Promise<void>> = [
+    (async () => {
+      try {
+        summary.value = await getStatisticsSummary()
+      } catch (e) {
+        summaryError.value = e instanceof Error && e.message ? e.message : '核心指标加载失败'
+        console.error('[AdminStatistics] 核心指标加载失败：', e)
+      }
+    })(),
+    (async () => {
+      try {
+        trend.value = await getStatisticsTrend(30)
+      } catch (e) {
+        trendError.value = e instanceof Error && e.message ? e.message : '趋势数据加载失败'
+        console.error('[AdminStatistics] 趋势数据加载失败：', e)
+      }
+    })(),
+    (async () => {
+      try {
+        departmentStats.value = await getDepartmentStats(query.value)
+      } catch (e) {
+        departmentError.value = e instanceof Error && e.message ? e.message : '科室统计加载失败'
+        console.error('[AdminStatistics] 科室统计加载失败：', e)
+      }
+    })(),
+    (async () => {
+      try {
+        doctorRanking.value = await getDoctorRanking(query.value)
+      } catch (e) {
+        doctorError.value = e instanceof Error && e.message ? e.message : '医生排名加载失败'
+        console.error('[AdminStatistics] 医生排名加载失败：', e)
+      }
+    })(),
+    (async () => {
+      try {
+        deviceUsage.value = await getDeviceUsageStats()
+      } catch (e) {
+        deviceError.value = e instanceof Error && e.message ? e.message : '设备使用统计加载失败'
+        console.error('[AdminStatistics] 设备使用统计加载失败：', e)
+      }
+    })(),
+    (async () => {
+      try {
+        aiCallStats.value = await getAiCallStats()
+      } catch (e) {
+        aiError.value = e instanceof Error && e.message ? e.message : 'AI 调用统计加载失败'
+        console.error('[AdminStatistics] AI 调用统计加载失败：', e)
+      }
+    })(),
+  ]
+
+  await Promise.all(tasks)
+  loading.value = false
+}
+
+// F-HW-08：单区域重试入口；点击时仅重新拉取该区域，其它已成功区域不受影响。
+async function retrySummary() {
+  summaryError.value = ''
   try {
-    const [s, t, dept, rank, dev, ai] = await Promise.all([
-      getStatisticsSummary(),
-      getStatisticsTrend(30),
-      getDepartmentStats(query.value),
-      getDoctorRanking(query.value),
-      getDeviceUsageStats(),
-      getAiCallStats(),
-    ])
-    summary.value = s
-    trend.value = t
-    departmentStats.value = dept
-    doctorRanking.value = rank
-    deviceUsage.value = dev
-    aiCallStats.value = ai
+    summary.value = await getStatisticsSummary()
   } catch (e) {
-    loadError.value = e instanceof Error ? e.message : '加载统计数据失败'
-    console.error('[AdminStatistics] 加载失败：', e)
-  } finally {
-    loading.value = false
+    summaryError.value = e instanceof Error && e.message ? e.message : '核心指标加载失败'
+  }
+}
+async function retryTrend() {
+  trendError.value = ''
+  try {
+    trend.value = await getStatisticsTrend(30)
+  } catch (e) {
+    trendError.value = e instanceof Error && e.message ? e.message : '趋势数据加载失败'
+  }
+}
+async function retryDepartment() {
+  departmentError.value = ''
+  try {
+    departmentStats.value = await getDepartmentStats(query.value)
+  } catch (e) {
+    departmentError.value = e instanceof Error && e.message ? e.message : '科室统计加载失败'
+  }
+}
+async function retryDoctor() {
+  doctorError.value = ''
+  try {
+    doctorRanking.value = await getDoctorRanking(query.value)
+  } catch (e) {
+    doctorError.value = e instanceof Error && e.message ? e.message : '医生排名加载失败'
+  }
+}
+async function retryDevice() {
+  deviceError.value = ''
+  try {
+    deviceUsage.value = await getDeviceUsageStats()
+  } catch (e) {
+    deviceError.value = e instanceof Error && e.message ? e.message : '设备使用统计加载失败'
+  }
+}
+async function retryAi() {
+  aiError.value = ''
+  try {
+    aiCallStats.value = await getAiCallStats()
+  } catch (e) {
+    aiError.value = e instanceof Error && e.message ? e.message : 'AI 调用统计加载失败'
   }
 }
 
@@ -240,17 +337,10 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- 加载状态 -->
+    <!-- 加载状态：仅在所有区域首次加载时显示遮罩；之后由各区域独立降级 -->
     <div v-if="loading" class="loading-card">
       <span class="loading-spinner" />
       <span class="loading-text">正在加载统计数据…</span>
-    </div>
-
-    <!-- 错误状态 -->
-    <div v-else-if="loadError" class="fallback-card error-card">
-      <div class="fallback-title">加载失败</div>
-      <div class="fallback-desc">{{ loadError }}</div>
-      <button class="primary-btn" @click="loadData">重新加载</button>
     </div>
 
     <!-- 成功状态 -->
@@ -258,7 +348,14 @@ onMounted(() => {
       <!-- 核心指标 -->
       <div class="section">
         <div class="section-title">核心指标</div>
-        <div class="metric-grid">
+        <div v-if="summaryError" class="area-fallback">
+          <div class="area-fallback-text">核心指标暂不可用：{{ summaryError }}</div>
+          <button class="area-retry-btn" @click="retrySummary">重试</button>
+        </div>
+        <div v-else-if="summaryMetrics.length === 0" class="area-fallback">
+          <div class="area-fallback-text">暂无核心指标数据</div>
+        </div>
+        <div v-else class="metric-grid">
           <div
             v-for="item in summaryMetrics"
             :key="item.label"
@@ -285,7 +382,11 @@ onMounted(() => {
               <span class="legend-text">完成就诊</span>
             </span>
           </div>
-          <div v-if="trend.length === 0" class="empty-card">
+          <div v-if="trendError" class="area-fallback">
+            <div class="area-fallback-text">趋势数据暂不可用：{{ trendError }}</div>
+            <button class="area-retry-btn" @click="retryTrend">重试</button>
+          </div>
+          <div v-else-if="trend.length === 0" class="empty-card">
             <div class="empty-icon">--</div>
             <div class="empty-text">暂无趋势数据</div>
           </div>
@@ -316,7 +417,11 @@ onMounted(() => {
       <div class="section">
         <div class="section-title">科室统计</div>
         <div class="table-card">
-          <div v-if="departmentStats.length === 0" class="empty-card">
+          <div v-if="departmentError" class="area-fallback">
+            <div class="area-fallback-text">科室统计暂不可用：{{ departmentError }}</div>
+            <button class="area-retry-btn" @click="retryDepartment">重试</button>
+          </div>
+          <div v-else-if="departmentStats.length === 0" class="empty-card">
             <div class="empty-icon">--</div>
             <div class="empty-text">暂无科室统计数据</div>
           </div>
@@ -349,7 +454,11 @@ onMounted(() => {
       <div class="section">
         <div class="section-title">医生接诊排名 Top 5</div>
         <div class="rank-card">
-          <div v-if="doctorRanking.length === 0" class="empty-card">
+          <div v-if="doctorError" class="area-fallback">
+            <div class="area-fallback-text">医生排名暂不可用：{{ doctorError }}</div>
+            <button class="area-retry-btn" @click="retryDoctor">重试</button>
+          </div>
+          <div v-else-if="doctorRanking.length === 0" class="empty-card">
             <div class="empty-icon">--</div>
             <div class="empty-text">暂无医生排名数据</div>
           </div>
@@ -382,7 +491,11 @@ onMounted(() => {
       <div class="section">
         <div class="section-title">设备使用统计</div>
         <div class="table-card">
-          <div v-if="deviceUsage.length === 0" class="empty-card">
+          <div v-if="deviceError" class="area-fallback">
+            <div class="area-fallback-text">设备使用统计暂不可用：{{ deviceError }}</div>
+            <button class="area-retry-btn" @click="retryDevice">重试</button>
+          </div>
+          <div v-else-if="deviceUsage.length === 0" class="empty-card">
             <div class="empty-icon">--</div>
             <div class="empty-text">暂无设备使用数据</div>
           </div>
@@ -427,7 +540,13 @@ onMounted(() => {
       <!-- AI 调用统计 -->
       <div class="section">
         <div class="section-title">AI 调用统计</div>
-        <div v-if="!aiCallStats" class="table-card">
+        <div v-if="aiError" class="table-card">
+          <div class="area-fallback">
+            <div class="area-fallback-text">AI 调用统计暂不可用：{{ aiError }}</div>
+            <button class="area-retry-btn" @click="retryAi">重试</button>
+          </div>
+        </div>
+        <div v-else-if="!aiCallStats" class="table-card">
           <div class="empty-card">
             <div class="empty-icon">--</div>
             <div class="empty-text">暂无 AI 调用数据</div>
@@ -1082,6 +1201,39 @@ onMounted(() => {
 .empty-text {
   font-size: 14px;
   color: #8e8e93;
+}
+
+/* F-HW-08：单区域独立降级卡片（错误时展示具体原因 + 重试） */
+.area-fallback {
+  padding: 22px 18px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.area-fallback-text {
+  font-size: 13px;
+  color: #f56c6c;
+  line-height: 1.5;
+  max-width: 480px;
+  word-break: break-all;
+}
+
+.area-retry-btn {
+  padding: 6px 16px;
+  background: #ffffff;
+  color: #4facfe;
+  border: 1px solid #4facfe;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.area-retry-btn:hover {
+  opacity: 0.85;
 }
 
 .footer-tip {

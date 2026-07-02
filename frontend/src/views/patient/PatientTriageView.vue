@@ -116,7 +116,10 @@ async function callTriage(chiefComplaint: string, nextRound: number) {
   return result
 }
 
-/** F1: 加载推荐医生（不阻塞分诊结果展示） */
+/** F1: 加载推荐医生（不阻塞分诊结果展示）
+ *  F-HW-07：分诊结果科室变化时由 handleFollowUp / handleSubmit 显式调用此函数
+ *  以刷新推荐医生和挂号跳转信息（基于最新的 triageResult.recommendedDepartmentId）。
+ */
 async function loadRecommendedDoctors(departmentId: number) {
   doctorsLoading.value = true
   doctorsFailed.value = false
@@ -197,6 +200,8 @@ async function handleFollowUp() {
   const answer = followUpText.value.trim()
   const nextRound = round.value + 1
   submitting.value = true
+  // F-HW-07：用户回复在请求前入栈历史，保证请求失败时本地历史不被清空（首轮内容保留），
+  // 也保证重试时能继续携带相同的历史。
   history.value.push({ role: 'user', text: answer })
   followUpText.value = ''
 
@@ -210,12 +215,14 @@ async function handleFollowUp() {
       text: next.reason,
       meta: { followUpQuestion: next.followUpQuestion, reason: next.reason },
     })
-    // 追问后如科室变化，刷新推荐医生
+    // F-HW-07：追问后如科室变化，刷新推荐医生；挂号跳转信息由 triageResult 派生，自动同步。
     if (next.recommendedDepartmentId !== oldDeptId) {
       void loadRecommendedDoctors(next.recommendedDepartmentId)
     }
   } catch (e) {
     console.error('追问失败：', e)
+    // F-HW-07：请求失败时保留本地历史（不重置 history/conversationId/round/triageResult），
+    // 用户可基于已有上下文继续追问或复制到下个会话。
     ElMessage.error('AI 追问失败，请重试')
   } finally {
     submitting.value = false

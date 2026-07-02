@@ -35,6 +35,9 @@ export const useAuthStore = defineStore('auth', () => {
     return 'PATIENT'
   })
 
+  // F-HW-03：保留后端 mustChangePassword 契约字段供审计/将来判断，
+  // 但前端不再基于该字段做强制跳转（已在 router beforeEach 中移除该分支）。
+  // 若后端后续真正删除该字段，可同步移除本计算属性。
   const mustChangePassword = computed(() => userInfo.value?.mustChangePassword ?? false)
 
   function hasRole(role: UserRole): boolean {

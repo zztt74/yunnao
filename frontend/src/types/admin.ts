@@ -15,6 +15,9 @@ export interface UserManageResponse {
   id: number
   username: string
   realName: string
+  // 业务展示名（仅在用户管理列表中由后端 displayName 字段下发的真实值时存在）；
+  // 不与 realName 强一致，可能为真实姓名、登录账号或后端自定义昵称。
+  displayName?: string
   roles: UserRole[]
   status: UserStatus
   phone: string
@@ -22,7 +25,11 @@ export interface UserManageResponse {
   // 关联实体 ID（按角色）
   patientId?: number
   doctorId?: number
-  lastLoginAt: string | null
+  // 三态字段：
+  // - string: 后端下发的最后登录时间，正常展示
+  // - null  : 后端明确标记为「从未登录」
+  // - undefined: 后端未下发该字段（旧版本契约），前端用 '--' 提示，避免误判为「从未登录」
+  lastLoginAt: string | null | undefined
   createdAt: string
   updatedAt: string
 }
@@ -224,17 +231,22 @@ export interface StatisticsQuery {
 // §16 日志查询
 // ============================================================
 
+// 登录日志。
+// F-HW-09：保留 ip 字段用于接口契约兼容，但前端 UI 不再展示；
+// role 改为可空（后端 operatorType 可能为 null，例如未登录失败的匿名尝试）。
 export interface LoginLog {
   id: number
   userId: number
   username: string
-  role: UserRole
+  role: UserRole | null
   loginTime: string
   ip: string
   success: boolean
   failReason: string | null
 }
 
+// 操作日志。
+// F-HW-10：operatorName/targetType 支持空值与系统占位，UI 层做中文翻译与友好降级。
 export interface OperationLog {
   id: number
   operatorId: number
@@ -242,6 +254,7 @@ export interface OperationLog {
   action: string
   targetType: string
   targetId: number | null
+  targetName?: string | null
   detail: string
   operatedAt: string
 }

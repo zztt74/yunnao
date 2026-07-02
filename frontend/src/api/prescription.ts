@@ -58,6 +58,7 @@ interface BackendPrescriptionReview {
 export async function getMyPrescriptions(params?: {
   fromDate?: string
   toDate?: string
+  includeDraft?: boolean
 }): Promise<PrescriptionResponse[]> {
   const patient = await getPatientInfo()
   return getPatientPrescriptions(patient.id, params)
@@ -158,26 +159,34 @@ function mapPrescription(
   prescription: BackendPrescriptionResponse,
   context?: { diagnosis?: string; remark?: string; encounter?: EncounterResponse },
 ): PrescriptionResponse {
+  // 字段映射兜底：后端 PrescriptionResponse 当前不下发医生/科室/患者姓名；
+  // 在没有 encounter 上下文时使用占位文本，避免前端 charAt(0) 之类调用引发渲染异常。
+  const doctorName = context?.encounter?.doctorName?.trim()
+    || `医生 ${prescription.doctorId}`
+  const departmentName = context?.encounter?.departmentName?.trim()
+    || '所属科室待医生确认'
+  const patientName = context?.encounter?.patientName?.trim()
+    || `患者 ${prescription.patientId}`
   return {
     id: prescription.id,
     encounterId: prescription.encounterId,
     patientId: prescription.patientId,
-    patientName: context?.encounter?.patientName ?? '',
+    patientName,
     doctorId: prescription.doctorId,
-    doctorName: context?.encounter?.doctorName ?? '',
-    departmentName: context?.encounter?.departmentName ?? '',
-    diagnosis: context?.diagnosis || '待医生补充诊断',
+    doctorName,
+    departmentName,
+    diagnosis: context?.diagnosis?.trim() || '待医生补充诊断',
     items: prescription.items.map((item) => ({
       id: item.id,
       drugId: item.id,
       drugCode: item.drugCode,
-      drugName: item.drugName,
+      drugName: item.drugName || '药品',
       strength: '',
       unit: '',
-      dosage: item.dosage,
-      frequency: item.frequency,
+      dosage: item.dosage || '--',
+      frequency: item.frequency || '--',
       usage: item.instructions ?? '',
-      duration: `${item.duration}`,
+      duration: item.duration ? `${item.duration}` : '按医嘱',
       remark: '',
     })),
     status: prescription.status,

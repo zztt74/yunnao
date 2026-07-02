@@ -216,6 +216,34 @@ describe('admin API', () => {
       expect(result[0].provider).toBe('deepseek')
       expect(mock.get).toHaveBeenCalledWith('/audit/ai/invocations/100/attempts')
     })
+
+    it('maps null model to empty string for safe UI rendering (F-HW-11)', async () => {
+      mock.get.mockResolvedValueOnce(
+        successEnvelope([
+          {
+            id: 201,
+            invocationId: 101,
+            provider: 'mock',
+            model: null,
+            promptVersion: null,
+            status: 'FAILED',
+            httpStatus: null,
+            errorType: 'MOCK_DISABLED',
+            errorMessage: 'mock not configured',
+            requestSummary: null,
+            responseSummary: null,
+            durationMs: null,
+            attemptIndex: 1,
+            startedAt: TIMESTAMP,
+            finishedAt: TIMESTAMP,
+          },
+        ]),
+      )
+      const result = await getAiInvocationAttempts(101)
+      expect(result[0].provider).toBe('mock')
+      expect(result[0].model).toBe('')
+      expect(result[0].httpStatus).toBeNull()
+    })
   })
 
   describe('getStatisticsSummary', () => {
@@ -453,6 +481,8 @@ describe('admin API', () => {
       const result = await getLoginLogs()
       expect(result[0].success).toBe(true)
       expect(result[0].ip).toBe('127.0.0.1')
+      expect(result[0].role).toBe('ADMIN')
+      expect(result[0].username).toBe('admin')
       expect(mock.get).toHaveBeenCalledWith('/audit/logs', {
         params: { action: 'AUTH_LOGIN', page: 1, size: 100 },
       })
@@ -482,8 +512,36 @@ describe('admin API', () => {
       )
       const result = await getLoginLogs()
       expect(result[0].success).toBe(false)
-      expect(result[0].username).toBe('SYSTEM')
+      expect(result[0].username).toBe('未识别用户')
+      expect(result[0].role).toBeNull()
       expect(result[0].failReason).toBe('密码错误')
+    })
+
+    it('replaces SYSTEM placeholder with anonymous label and downgrades unknown role (F-HW-09)', async () => {
+      mock.get.mockResolvedValueOnce(
+        pageEnvelope(
+          [
+            {
+              id: 3,
+              operatorId: null,
+              operatorType: 'UNKNOWN_ROLE',
+              operatorName: 'SYSTEM',
+              action: 'AUTH_LOGIN',
+              targetType: 'USER',
+              targetId: null,
+              details: null,
+              result: 'FAILED',
+              errorMessage: '账号不存在',
+              ipAddress: '127.0.0.1',
+              createdAt: TIMESTAMP,
+            },
+          ],
+          { total: 1 },
+        ),
+      )
+      const result = await getLoginLogs()
+      expect(result[0].username).toBe('未识别用户')
+      expect(result[0].role).toBeNull()
     })
   })
 
@@ -515,6 +573,36 @@ describe('admin API', () => {
       expect(result[0].operatorName).toBe('doc')
       expect(result[0].detail).toBe('开立处方')
       expect(result[0].targetId).toBe(100)
+      expect(result[0].targetType).toBe('PRESCRIPTION')
+    })
+
+    it('replaces SYSTEM operatorName with 系统 and handles null targetType (F-HW-10)', async () => {
+      mock.get.mockResolvedValueOnce(
+        pageEnvelope(
+          [
+            {
+              id: 4,
+              operatorId: null,
+              operatorType: null,
+              operatorName: 'SYSTEM',
+              action: 'CLEAN_TEMP_FILES',
+              targetType: null,
+              targetId: null,
+              details: '清理临时文件',
+              result: 'SUCCESS',
+              errorMessage: null,
+              ipAddress: '127.0.0.1',
+              createdAt: TIMESTAMP,
+            },
+          ],
+          { total: 1 },
+        ),
+      )
+      const result = await getOperationLogs()
+      expect(result[0].operatorName).toBe('系统')
+      expect(result[0].operatorId).toBe(0)
+      expect(result[0].targetType).toBe('')
+      expect(result[0].targetId).toBeNull()
     })
   })
 
@@ -648,6 +736,16 @@ describe('admin API', () => {
       const result = await getAdminPatients({ keyword: '   ' })
       expect(result.total).toBe(0)
       expect(result.list).toEqual([])
+      // F-HW-06：未传 status 时不向 /patients 透传 status 参数，
+      // 由 AdminPatientsView 通过 statusFilter 主动控制是否传 ACTIVE/INACTIVE。
+      expect(mock.get).toHaveBeenCalledWith('/patients', {
+        params: { name: undefined, status: undefined, page: 1, pageSize: 10 },
+      })
+    })
+
+    it('forwards explicit status to the backend', async () => {
+      mock.get.mockResolvedValueOnce(pageEnvelope([], { page: 1, pageSize: 10, total: 0 }))
+      await getAdminPatients({ status: 'ACTIVE' })
       expect(mock.get).toHaveBeenCalledWith('/patients', {
         params: { name: undefined, status: 'ACTIVE', page: 1, pageSize: 10 },
       })
@@ -680,7 +778,7 @@ describe('admin API', () => {
       expect(result.total).toBe(1)
       expect(result.list).toHaveLength(1)
       expect(mock.get).toHaveBeenNthCalledWith(1, '/patients', {
-        params: { name: '张', status: 'ACTIVE', page: 1, pageSize: 10 },
+        params: { name: '张', status: undefined, page: 1, pageSize: 10 },
       })
     })
   })
@@ -1118,6 +1216,64 @@ describe('admin API', () => {
       const result = await getUsers({ status: 'LOCKED' })
       expect(result).toHaveLength(1)
       expect(result[0].id).toBe(1)
+    })
+
+    it('F-HW-04: maps displayName when backend provides it, falls back to realName then username', async () => {
+      mock.get.mockResolvedValueOnce(
+        successEnvelope({
+          items: [
+            { ...backendUser, id: 10, displayName: '展示名', realName: '管理员' },
+            { ...backendUser, id: 11, displayName: null, realName: '管理员乙' },
+            { ...backendUser, id: 12, displayName: null, realName: null },
+          ],
+          page: 1,
+          pageSize: 100,
+          total: 3,
+          totalPages: 1,
+        }),
+      )
+      const result = await getUsers()
+      expect(result[0].realName).toBe('展示名')
+      expect(result[0].displayName).toBe('展示名')
+      expect(result[1].realName).toBe('管理员乙')
+      expect(result[1].displayName).toBeUndefined()
+      expect(result[2].realName).toBe('admin')
+      expect(result[2].displayName).toBeUndefined()
+    })
+
+    it('F-HW-04: maps lastLoginAt with three states (string / null / undefined)', async () => {
+      mock.get.mockResolvedValueOnce(
+        successEnvelope({
+          items: [
+            { ...backendUser, id: 20, lastLoginAt: '2026-07-01T10:00:00' },
+            { ...backendUser, id: 21, lastLoginAt: null },
+            { ...backendUser, id: 22 },
+          ],
+          page: 1,
+          pageSize: 100,
+          total: 3,
+          totalPages: 1,
+        }),
+      )
+      const result = await getUsers()
+      expect(result[0].lastLoginAt).toBe('2026-07-01T10:00:00')
+      expect(result[1].lastLoginAt).toBeNull()
+      expect(result[2].lastLoginAt).toBeUndefined()
+    })
+
+    it('F-HW-04: maps missing phone/email to empty string to avoid charAt(0) crash', async () => {
+      mock.get.mockResolvedValueOnce(
+        successEnvelope({
+          items: [{ ...backendUser, id: 30, phone: null, email: null }],
+          page: 1,
+          pageSize: 100,
+          total: 1,
+          totalPages: 1,
+        }),
+      )
+      const result = await getUsers()
+      expect(result[0].phone).toBe('')
+      expect(result[0].email).toBe('')
     })
 
     it('createUser posts ADMIN payload', async () => {

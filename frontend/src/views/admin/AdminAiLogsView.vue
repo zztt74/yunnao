@@ -5,7 +5,6 @@
 // 切页时不卸载表格，仅覆盖数据，避免 el-pagination 触发表格整体闪退
 // 敏感字段（API Key、Token 等）不在前端展示；attempts 详情通过独立接口按需展开
 import { ref, computed, onMounted, reactive } from 'vue'
-import { ElMessage } from 'element-plus'
 import { getAiInvocationLogs, getAiInvocationAttempts } from '@/api/admin'
 import type { AiInvocationLog, AiInvocationAttempt } from '@/types/admin'
 
@@ -59,6 +58,32 @@ function errorTypeText(type: string): string {
   return map[type] || type
 }
 
+// F-HW-11：内部 provider key → 用户友好展示文本。
+// 真实供应商使用品牌名；mock/未知来源显示「本地模拟」/「未知」，
+// 避免把内部技术 key（mock / unknown 等）直接暴露给演示用户。
+const providerDisplayMap: Record<string, string> = {
+  deepseek: 'DeepSeek',
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  qwen: '通义千问',
+  wenxin: '文心一言',
+  glm: '智谱 GLM',
+  mock: '本地模拟',
+  local: '本地模拟',
+  unknown: '未知来源',
+}
+
+function providerDisplayText(raw: string | null | undefined): string {
+  if (!raw || !raw.trim()) return '--'
+  const key = raw.trim().toLowerCase()
+  return providerDisplayMap[key] ?? raw
+}
+
+function modelDisplayText(raw: string | null | undefined): string {
+  if (!raw || !raw.trim()) return '--'
+  return raw
+}
+
 function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return '--'
   try {
@@ -80,27 +105,41 @@ function businessIdText(id: number | null): string {
   return id === null || id === undefined ? '--' : String(id)
 }
 
-function modelText(model: string): string {
-  // 后端当前未下发 model/provider，UI 显式降级展示 '--'
-  return model && model.trim() ? model : '--'
-}
-
 function isSlow(duration: number): boolean {
   return duration > SLOW_THRESHOLD
+}
+
+// ---- attempts 缓存（F-HW-11：列表行展示与行展开共用，避免重复请求） ----
+const attemptsCache = ref<Record<number, AiInvocationAttempt[]>>({})
+
+// F-HW-11：尝试从已缓存的 attempts 中提取最近一次的 provider/model 填充列表行。
+// 若 attempts 尚未拉取（首次进入 / 切换分页），返回 null，UI 降级为 '--'，
+// 等待预取完成或用户展开行后再显示。
+function lastAttemptSummary(id: number): { provider: string; model: string } | null {
+  const attempts = attemptsCache.value[id]
+  if (!attempts || attempts.length === 0) return null
+  const sorted = [...attempts].sort((a, b) => a.attemptIndex - b.attemptIndex)
+  const last = sorted[sorted.length - 1]
+  return { provider: last.provider, model: last.model }
 }
 
 // 列表展示：仅在当前页做关键字客户端筛选；其它维度已由后端过滤
 const filteredLogs = computed(() => {
   const kw = keyword.value.trim().toLowerCase()
   if (!kw) return logs.value
-  return logs.value.filter(
-    (l) =>
-      l.provider.toLowerCase().includes(kw) ||
-      l.model.toLowerCase().includes(kw) ||
+  return logs.value.filter((l) => {
+    const summary = lastAttemptSummary(l.id)
+    const providerRaw = summary?.provider ?? l.provider
+    const modelRaw = summary?.model ?? l.model
+    return (
+      providerRaw.toLowerCase().includes(kw) ||
+      modelRaw.toLowerCase().includes(kw) ||
+      providerDisplayText(providerRaw).toLowerCase().includes(kw) ||
       l.businessType.toLowerCase().includes(kw) ||
       l.callType.toLowerCase().includes(kw) ||
-      (l.errorMessage ?? '').toLowerCase().includes(kw),
-  )
+      (l.errorMessage ?? '').toLowerCase().includes(kw)
+    )
+  })
 })
 
 // 汇总统计：基于当前页的 keyword 筛选结果，与表格行数严格一致
@@ -141,12 +180,30 @@ async function loadLogs() {
     const result = await getAiInvocationLogs(buildQueryParams())
     logs.value = result.list
     total.value = result.total
+    // F-HW-11：列表行 DTO 不下发 provider/model，并行预取 attempts 填充表格列。
+    // 单条拉取失败不影响其他行；统一静默失败，UI 降级为 '--'。
+    void prefetchAttempts(result.list.map((log) => log.id))
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : '加载 AI 调用记录失败'
     console.error('[AdminAiLogs] 加载失败：', e)
   } finally {
     loading.value = false
   }
+}
+
+async function prefetchAttempts(ids: number[]) {
+  if (ids.length === 0) return
+  const missing = ids.filter((id) => !attemptsCache.value[id])
+  if (missing.length === 0) return
+  await Promise.all(
+    missing.map(async (id) => {
+      try {
+        attemptsCache.value[id] = await getAiInvocationAttempts(id)
+      } catch (e) {
+        console.warn(`[AdminAiLogs] 预取 attempts 失败（id=${id}）：`, e)
+      }
+    }),
+  )
 }
 
 function resetFilter() {
@@ -174,7 +231,6 @@ function onPageChange(page: number) {
 const expandedId = ref<number | null>(null)
 const attemptsLoading = ref<number | null>(null)
 const attemptsError = ref('')
-const attemptsCache = ref<Record<number, AiInvocationAttempt[]>>({})
 
 async function toggleAttempts(log: AiInvocationLog) {
   if (expandedId.value === log.id) {
@@ -345,8 +401,8 @@ onMounted(loadLogs)
                 <td>
                   <span class="badge badge-type">{{ callTypeText(log.callType) }}</span>
                 </td>
-                <td class="cell-mono">{{ modelText(log.provider) }}</td>
-                <td class="cell-mono">{{ modelText(log.model) }}</td>
+                <td class="cell-mono">{{ providerDisplayText(lastAttemptSummary(log.id)?.provider ?? log.provider) }}</td>
+                <td class="cell-mono">{{ modelDisplayText(lastAttemptSummary(log.id)?.model ?? log.model) }}</td>
                 <td class="cell-target-type">{{ log.businessType }}</td>
                 <td class="cell-target-id">{{ businessIdText(log.businessId) }}</td>
                 <td>
@@ -403,8 +459,8 @@ onMounted(loadLogs)
                               {{ attemptStatusText(a.status) }}
                             </span>
                           </td>
-                          <td class="cell-mono">{{ a.provider }}</td>
-                          <td class="cell-mono">{{ a.model || '--' }}</td>
+                          <td class="cell-mono">{{ providerDisplayText(a.provider) }}</td>
+                          <td class="cell-mono">{{ modelDisplayText(a.model) }}</td>
                           <td class="cell-mono">{{ a.promptVersion || '--' }}</td>
                           <td class="cell-target-id">{{ a.httpStatus ?? '--' }}</td>
                           <td>{{ a.duration ?? '--' }} ms</td>

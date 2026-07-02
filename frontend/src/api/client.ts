@@ -31,6 +31,17 @@ apiClient.interceptors.response.use(
     } else if (status === 403) {
       router.push('/forbidden')
     }
+    // F-HW-05：从后端 4xx/5xx 响应中提取 message，覆写 axios 默认的
+    // "Request failed with status code 400" 之类的英文提示，便于直接展示。
+    // 后端 ApiResponse 约定的字段是 code/message/traceId/data。
+    const body = error?.response?.data
+    if (body && typeof body === 'object' && typeof body.message === 'string' && body.message) {
+      // 只在 axios 默认 message 是无意义英文时替换，避免覆盖已有更有用的描述
+      const rawMsg = typeof error.message === 'string' ? error.message : ''
+      if (/^Request failed with status code \d+$/.test(rawMsg) || !rawMsg) {
+        error.message = body.message
+      }
+    }
     return Promise.reject(error)
   },
 )

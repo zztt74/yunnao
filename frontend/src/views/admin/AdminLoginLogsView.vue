@@ -21,8 +21,9 @@ const roleLabels: Record<UserRole, string> = {
   PATIENT: '患者',
 }
 
-function roleText(role: UserRole): string {
-  return roleLabels[role] ?? role
+function roleText(role: UserRole | null): string {
+  if (!role) return '未识别'
+  return roleLabels[role] ?? '未识别'
 }
 
 function formatDateTime(iso: string): string {
@@ -126,7 +127,7 @@ onMounted(loadLogs)
           v-model="keyword"
           type="text"
           class="filter-input"
-          placeholder="输入用户名关键字"
+          placeholder="输入用户名关键字（已忽略 IP 相关检索）"
         />
       </div>
       <button class="ghost-btn" @click="resetFilter">重置</button>
@@ -162,7 +163,6 @@ onMounted(loadLogs)
               <th>登录时间</th>
               <th>用户名</th>
               <th>角色</th>
-              <th>IP 地址</th>
               <th>结果</th>
               <th>失败原因</th>
             </tr>
@@ -172,7 +172,6 @@ onMounted(loadLogs)
               <td class="cell-time">{{ formatDateTime(log.loginTime) }}</td>
               <td class="cell-username">{{ log.username }}</td>
               <td>{{ roleText(log.role) }}</td>
-              <td class="cell-ip">{{ log.ip }}</td>
               <td>
                 <span class="badge" :class="log.success ? 'badge-success' : 'badge-fail'">
                   {{ log.success ? '成功' : '失败' }}
@@ -418,7 +417,7 @@ onMounted(loadLogs)
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
-  min-width: 720px;
+  min-width: 640px;
 }
 
 .log-table thead th {
@@ -455,11 +454,6 @@ onMounted(loadLogs)
 
 .cell-username {
   font-weight: 500;
-}
-
-.cell-ip {
-  color: #475569;
-  font-variant-numeric: tabular-nums;
 }
 
 .cell-reason {

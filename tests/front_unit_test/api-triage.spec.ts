@@ -128,6 +128,51 @@ describe('triage API', () => {
         supplement: undefined,
       })
     })
+
+    it('forwards conversationId, round and history on follow-up call (F-HW-07)', async () => {
+      // 第一轮
+      mock.get.mockResolvedValueOnce(successEnvelope(backendPatientFixture()))
+      mock.post.mockResolvedValueOnce(
+        successEnvelope(backendTriageAnalyzeFixture({ conversationId: 'conv-1', round: 1 })),
+      )
+      await consultTriage({
+        chiefComplaint: '头痛',
+        conversationId: 'conv-1',
+        round: 1,
+        history: [
+          { role: 'user', text: '头痛' },
+          { role: 'ai', text: '请补充是否伴有恶心' },
+        ],
+      })
+      // 第二轮：前端必须沿用同一 conversationId 并携带累积 history 和递增的 round
+      mock.get.mockResolvedValueOnce(successEnvelope(backendPatientFixture()))
+      mock.post.mockResolvedValueOnce(
+        successEnvelope(backendTriageAnalyzeFixture({ conversationId: 'conv-1', round: 2 })),
+      )
+      await consultTriage({
+        chiefComplaint: '是，有恶心感',
+        conversationId: 'conv-1',
+        round: 2,
+        history: [
+          { role: 'user', text: '头痛' },
+          { role: 'ai', text: '请补充是否伴有恶心' },
+          { role: 'user', text: '是，有恶心感' },
+        ],
+      })
+      expect(mock.post).toHaveBeenNthCalledWith(2, '/triage/consult', {
+        patientId: 42,
+        symptoms: '是，有恶心感',
+        duration: undefined,
+        supplement: undefined,
+        conversationId: 'conv-1',
+        history: [
+          { role: 'USER', content: '头痛' },
+          { role: 'ASSISTANT', content: '请补充是否伴有恶心' },
+          { role: 'USER', content: '是，有恶心感' },
+        ],
+        round: 2,
+      })
+    })
   })
 
   describe('getMyTriageRecords', () => {

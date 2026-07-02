@@ -37,6 +37,57 @@ describe('prescription API', () => {
       expect(result.map((p) => p.id)).toEqual([1, 3])
     })
 
+    it('uses safe fallbacks for doctor/department/patient when encounter is missing (F-HW-02)', async () => {
+      mock.get.mockResolvedValueOnce(successEnvelope(backendPatientFixture()))
+      mock.get.mockResolvedValueOnce(
+        pageEnvelope([
+          backendPrescriptionFixture({
+            id: 50,
+            status: 'CONFIRMED',
+            doctorId: 7,
+            patientId: 42,
+            items: [
+              {
+                id: 500,
+                drugCode: 'D-001',
+                drugName: '',
+                dosage: '',
+                dosageValue: 0,
+                frequency: '',
+                duration: null as unknown as number,
+                quantity: 0,
+                instructions: null,
+              },
+            ],
+          }),
+        ]),
+      )
+      const result = await getMyPrescriptions()
+      const p = result[0]
+      // 字段缺失时不再返回空字符串，避免 charAt(0) 等渲染异常
+      expect(p.doctorName).toBe('医生 7')
+      expect(p.departmentName).toBe('所属科室待医生确认')
+      expect(p.patientName).toBe('患者 42')
+      expect(p.diagnosis).toBe('待医生补充诊断')
+      // 药品项空值兜底
+      expect(p.items[0].drugName).toBe('药品')
+      expect(p.items[0].dosage).toBe('--')
+      expect(p.items[0].frequency).toBe('--')
+      expect(p.items[0].duration).toBe('按医嘱')
+    })
+
+    it('includes DRAFT prescriptions when includeDraft=true is passed', async () => {
+      mock.get.mockResolvedValueOnce(successEnvelope(backendPatientFixture()))
+      mock.get.mockResolvedValueOnce(
+        pageEnvelope([
+          backendPrescriptionFixture({ id: 60, status: 'CONFIRMED' }),
+          backendPrescriptionFixture({ id: 61, status: 'DRAFT' }),
+        ]),
+      )
+      const result = await getMyPrescriptions({ includeDraft: true })
+      expect(result.map((p) => p.id)).toEqual([60, 61])
+    })
+
     it('sorts desc by confirmedAt or createdAt', async () => {
       mock.get.mockResolvedValueOnce(successEnvelope(backendPatientFixture()))
       mock.get.mockResolvedValueOnce(

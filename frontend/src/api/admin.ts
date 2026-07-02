@@ -166,11 +166,16 @@ interface BackendAdminUserResponse {
   id: number
   username: string
   realName?: string | null
+  // 后端可在列表 DTO 中下发展示名（displayName）；未下发时回退到 realName/username。
+  displayName?: string | null
   phone?: string | null
   email?: string | null
   enabled: boolean
   accountNonLocked: boolean
   roles: string[]
+  // 后端可在列表 DTO 中下发最后登录时间（lastLoginAt）；
+  // 未下发（undefined）与显式空（null）保留差异：undefined → '--'；null → 从未登录。
+  lastLoginAt?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -347,13 +352,18 @@ function adminSchedulePayload(payload: ScheduleCreateRequest | ScheduleUpdateReq
 }
 
 function mapAuditLog(log: AuditLogResponse): OperationLog {
+  // F-HW-10：操作人不再用 'SYSTEM' 占位，空值时显示「系统」/「未识别」；
+  // 目标类型与目标名称均做空值降级，便于 UI 做中文翻译。
+  const rawName = log.operatorName?.trim()
+  const operatorName = rawName && rawName.toUpperCase() !== 'SYSTEM' ? rawName : '系统'
   return {
     id: log.id,
     operatorId: log.operatorId ?? 0,
-    operatorName: log.operatorName ?? 'SYSTEM',
+    operatorName,
     action: log.action,
-    targetType: log.targetType,
+    targetType: log.targetType ?? '',
     targetId: log.targetId,
+    targetName: null,
     detail: log.details ?? log.errorMessage ?? '',
     operatedAt: log.createdAt,
   }
@@ -374,15 +384,23 @@ function mapBackendUser(user: BackendAdminUserResponse): UserManageResponse {
   const roles = user.roles.filter((role): role is UserRole =>
     role === 'ADMIN' || role === 'DOCTOR' || role === 'PATIENT',
   )
+  // 兜底：先 displayName（业务展示名）→ realName → username，
+  // 确保手机/资料缺失时前端不展示空字符串，也不会因 null 触发 charAt(0) 等渲染异常。
+  const safeName = (user.displayName?.trim() || user.realName?.trim() || user.username || '').trim()
   return {
     id: user.id,
     username: user.username,
-    realName: user.realName ?? user.username,
+    realName: safeName,
+    displayName: user.displayName ?? undefined,
     roles,
     status: backendUserStatus(user),
     phone: user.phone ?? '',
     email: user.email ?? '',
-    lastLoginAt: null,
+    // lastLoginAt:
+    //   - string: 正常时间
+    //   - null  : 后端明确标记为「从未登录」
+    //   - undefined: 后端未下发该字段（旧版本契约），前端用 '--' 提示，避免误显示为「从未登录」
+    lastLoginAt: user.lastLoginAt === undefined ? undefined : user.lastLoginAt,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   }
@@ -769,16 +787,18 @@ export async function getAdminAppointments(query?: {
 
 export async function getAdminPatients(query?: {
   keyword?: string
+  status?: 'ACTIVE' | 'INACTIVE' | ''
   page?: number
   pageSize?: number
 }): Promise<PageResult<PatientDetailResponse>> {
   const keyword = query?.keyword?.trim()
   const page = query?.page ?? 1
   const pageSize = query?.pageSize ?? 10
+  // 后端 /api/patients 支持 status/name 筛选；F-HW-06 改为透传 status，未传则不传参。
   const res = await apiClient.get('/patients', {
     params: {
       name: keyword || undefined,
-      status: 'ACTIVE',
+      status: query?.status || undefined,
       page,
       pageSize,
     },
@@ -957,16 +977,28 @@ export async function getLoginLogs(): Promise<LoginLog[]> {
     params: { action: 'AUTH_LOGIN', page: 1, size: 100 },
   })
   const logs = parseApiResponse<PageResponse<AuditLogResponse>>(res.data).items
-  return logs.map((log) => ({
-    id: log.id,
-    userId: log.operatorId ?? 0,
-    username: log.operatorName ?? 'SYSTEM',
-    role: (log.operatorType as UserRole | null) ?? 'ADMIN',
-    loginTime: log.createdAt,
-    ip: log.ipAddress ?? '',
-    success: log.result === 'SUCCESS',
-    failReason: log.errorMessage,
-  }))
+  return logs.map((log) => {
+    // F-HW-09：username 不再用固定 'SYSTEM' 占位；优先 operatorName，回退到
+    // 「未识别用户」避免误导审计读者；IP/role 也做安全降级。
+    const rawName = log.operatorName?.trim()
+    const username = rawName && rawName.toUpperCase() !== 'SYSTEM' ? rawName : '未识别用户'
+    const role: UserRole | null =
+      log.operatorType === 'ADMIN' ||
+      log.operatorType === 'DOCTOR' ||
+      log.operatorType === 'PATIENT'
+        ? log.operatorType
+        : null
+    return {
+      id: log.id,
+      userId: log.operatorId ?? 0,
+      username,
+      role,
+      loginTime: log.createdAt,
+      ip: log.ipAddress ?? '',
+      success: log.result === 'SUCCESS',
+      failReason: log.errorMessage,
+    }
+  })
 }
 
 export async function getOperationLogs(): Promise<OperationLog[]> {
