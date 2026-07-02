@@ -299,7 +299,7 @@ function cancelEndUsage() {
 /** 提交结束使用（§13.4：设备恢复空闲或转故障） */
 async function handleEndUsage(usage: DeviceUsageResponse) {
   try {
-    const updated = await endDeviceUsage(usage.id, {
+    const updated = await endDeviceUsage(usage.deviceId, {
       result: endForm.value.result || undefined,
       deviceEndStatus: endForm.value.deviceEndStatus,
     })

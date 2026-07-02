@@ -8,6 +8,14 @@ import java.util.List;
  *
  * 包含 AI 分诊结果、科室映射结果和推荐可预约排班。
  * AI 失败时返回降级标记，提示转人工选择。
+ *
+ * 多轮扩展（UF-01）：
+ * - conversationId：回显请求中的 conversationId（无则 null）
+ * - round：回显当前轮次
+ * - isFinal：AI 是否认为已可终结会话（true=已给最终建议，前端展示最终建议卡片；false=仍有追问）
+ * - followUpQuestion：AI 主动追问的问题（isFinal=true 时为 null）
+ *
+ * 单轮兼容：isFinal 默认 true、followUpQuestion 默认 null，与老前端兼容。
  */
 public record TriageAnalyzeResponse(
         Long triageRecordId,
@@ -31,7 +39,13 @@ public record TriageAnalyzeResponse(
         // 推荐排班
         List<RecommendedSchedule> recommendedSchedules,
         // 审计
-        LocalDateTime createdAt) {
+        LocalDateTime createdAt,
+
+        // ===== UF-01 多轮扩展 =====
+        String conversationId,
+        Integer round,
+        Boolean isFinal,
+        String followUpQuestion) {
 
     /**
      * 推荐可预约排班

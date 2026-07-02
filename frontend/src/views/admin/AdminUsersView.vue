@@ -11,6 +11,7 @@ import { ref, computed, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   getUsers,
+  getDepartments,
   createUser,
   updateUser,
   changeUserStatus,
@@ -23,16 +24,18 @@ import type {
   UserStatus,
   UserStatusChangeRequest,
   ResetPasswordRequest,
+  DepartmentResponse,
 } from '@/types/admin'
 import type { UserRole } from '@/types/auth'
 
 const loading = ref(true)
 const loadError = ref('')
 const users = ref<UserManageResponse[]>([])
+const departments = ref<DepartmentResponse[]>([])
 
 // 筛选
 const filterRole = ref<UserRole | 'ALL'>('ALL')
-const filterStatus = ref<UserStatus | 'ALL'>('ALL')
+const filterStatus = ref<UserStatus | 'ALL'>('ENABLED')
 const keyword = ref('')
 
 const filteredUsers = computed(() => {
@@ -60,6 +63,12 @@ const form = reactive<{
   roles: UserRole[]
   phone: string
   email: string
+  departmentId: number | null
+  doctorTitle: string
+  specialty: string
+  education: string
+  experienceYears: number | null
+  introduction: string
 }>({
   username: '',
   password: '',
@@ -67,6 +76,12 @@ const form = reactive<{
   roles: [],
   phone: '',
   email: '',
+  departmentId: null,
+  doctorTitle: 'ATTENDING',
+  specialty: '',
+  education: '',
+  experienceYears: null,
+  introduction: '',
 })
 
 const roleOptions: { value: UserRole; label: string }[] = [
@@ -74,12 +89,24 @@ const roleOptions: { value: UserRole; label: string }[] = [
   { value: 'DOCTOR', label: '医生' },
   { value: 'ADMIN', label: '管理员' },
 ]
+const doctorTitleOptions = [
+  { value: 'CHIEF', label: '主任医师' },
+  { value: 'DEPUTY_CHIEF', label: '副主任医师' },
+  { value: 'ATTENDING', label: '主治医师' },
+  { value: 'RESIDENT', label: '住院医师' },
+]
+const creatableRoleOptions = computed(() =>
+  roleOptions.filter((option) => option.value === 'DOCTOR' || option.value === 'ADMIN'),
+)
 
 const usernameValid = computed(() => /^[A-Za-z0-9_.]{3,32}$/.test(form.username))
-const passwordValid = computed(() => form.password.length >= 6)
+const passwordValid = computed(() => form.password.length >= 8)
 const realNameValid = computed(() => form.realName.trim().length >= 2)
 const rolesValid = computed(() => form.roles.length > 0)
 const phoneValid = computed(() => /^1\d{10}$/.test(form.phone))
+const doctorSelected = computed(() => form.roles.includes('DOCTOR'))
+const supportedRoleValid = computed(() => form.roles.every((role) => role === 'ADMIN' || role === 'DOCTOR'))
+const departmentValid = computed(() => !doctorSelected.value || form.departmentId !== null)
 const emailValid = computed(() => {
   if (!form.email) return true
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)
@@ -87,7 +114,7 @@ const emailValid = computed(() => {
 
 const canSave = computed(() => {
   if (saving.value) return false
-  if (!realNameValid.value || !rolesValid.value || !phoneValid.value || !emailValid.value) {
+  if (!realNameValid.value || !rolesValid.value || !supportedRoleValid.value || !phoneValid.value || !emailValid.value || !departmentValid.value) {
     return false
   }
   if (modalMode.value === 'create') {
@@ -103,14 +130,16 @@ function resetForm() {
   form.roles = []
   form.phone = ''
   form.email = ''
+  form.departmentId = null
+  form.doctorTitle = 'ATTENDING'
+  form.specialty = ''
+  form.education = ''
+  form.experienceYears = null
+  form.introduction = ''
 }
 
 function toggleRole(role: UserRole) {
-  if (form.roles.includes(role)) {
-    form.roles = form.roles.filter((r) => r !== role)
-  } else {
-    form.roles = [...form.roles, role]
-  }
+  form.roles = form.roles.includes(role) ? [] : [role]
 }
 
 function statusText(status: UserStatus): string {
@@ -165,8 +194,14 @@ function roleTagClass(role: UserRole): string {
   }
 }
 
-function formatDateTime(iso: string | null): string {
-  if (!iso) return '从未登录'
+function formatDateTime(iso: string | null | undefined): string {
+  // 严格区分：
+  //   - null       → 后端明确「从未登录」
+  //   - undefined  → 后端未下发该字段（旧版本契约），展示 '--'，
+  //                   避免被误识别为「从未登录」掩盖后端契约缺失问题
+  //   - string     → 正常格式化为本地时间
+  if (iso === null) return '从未登录'
+  if (iso === undefined || iso === '') return '--'
   try {
     return new Date(iso).toLocaleString('zh-CN', {
       year: 'numeric',
@@ -184,7 +219,12 @@ async function loadUsers() {
   loading.value = true
   loadError.value = ''
   try {
-    users.value = await getUsers()
+    const [userList, departmentList] = await Promise.all([
+      getUsers(),
+      getDepartments(),
+    ])
+    users.value = userList
+    departments.value = departmentList
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : '加载用户列表失败'
     console.error('[AdminUsers] 加载失败：', e)
@@ -209,6 +249,12 @@ function openEdit(user: UserManageResponse) {
   form.roles = [...user.roles]
   form.phone = user.phone
   form.email = user.email
+  form.departmentId = null
+  form.doctorTitle = 'ATTENDING'
+  form.specialty = ''
+  form.education = ''
+  form.experienceYears = null
+  form.introduction = ''
   modalVisible.value = true
 }
 
@@ -224,7 +270,7 @@ async function handleSubmit() {
     return
   }
   if (modalMode.value === 'create' && !passwordValid.value) {
-    ElMessage.warning('初始密码至少 6 位')
+    ElMessage.warning('初始密码至少 8 位')
     return
   }
   if (!phoneValid.value) {
@@ -233,6 +279,14 @@ async function handleSubmit() {
   }
   if (!emailValid.value) {
     ElMessage.warning('邮箱格式不正确')
+    return
+  }
+  if (!supportedRoleValid.value) {
+    ElMessage.warning('本阶段仅支持创建或修改医生、管理员账号')
+    return
+  }
+  if (!departmentValid.value) {
+    ElMessage.warning('创建医生账号时必须选择科室')
     return
   }
   saving.value = true
@@ -245,6 +299,13 @@ async function handleSubmit() {
         roles: [...form.roles],
         phone: form.phone.trim(),
         email: form.email.trim() || undefined,
+        departmentId: doctorSelected.value ? form.departmentId ?? undefined : undefined,
+        doctorName: doctorSelected.value ? form.realName.trim() : undefined,
+        doctorTitle: doctorSelected.value ? form.doctorTitle.trim() || undefined : undefined,
+        specialty: doctorSelected.value ? form.specialty.trim() || undefined : undefined,
+        education: doctorSelected.value ? form.education.trim() || undefined : undefined,
+        experienceYears: doctorSelected.value ? form.experienceYears ?? undefined : undefined,
+        introduction: doctorSelected.value ? form.introduction.trim() || undefined : undefined,
       }
       const created = await createUser(payload)
       users.value = [created, ...users.value]
@@ -272,7 +333,7 @@ async function handleSubmit() {
 async function handleResetPassword(user: UserManageResponse) {
   try {
     const { value } = await ElMessageBox.prompt(
-      `请输入 ${user.realName}（${user.username}）的新密码，至少 6 位`,
+      `请输入 ${user.realName}（${user.username}）的新密码，至少 8 位`,
       '重置密码',
       {
         confirmButtonText: '确认重置',
@@ -281,7 +342,7 @@ async function handleResetPassword(user: UserManageResponse) {
         inputType: 'password',
         inputValidator: (input: string) => {
           if (!input) return '请输入新密码'
-          if (input.length < 6) return '密码至少 6 位'
+          if (input.length < 8) return '密码至少 8 位'
           return true
         },
       },
@@ -511,7 +572,7 @@ onMounted(loadUsers)
                   type="password"
                   class="form-input"
                   :class="{ 'input-error': form.password && !passwordValid }"
-                  placeholder="至少 6 位"
+                  placeholder="至少 8 位"
                   maxlength="64"
                 />
               </div>
@@ -546,7 +607,7 @@ onMounted(loadUsers)
             </label>
             <div class="role-checkbox-group">
               <label
-                v-for="opt in roleOptions"
+                v-for="opt in creatableRoleOptions"
                 :key="opt.value"
                 class="role-checkbox"
                 :class="{ checked: form.roles.includes(opt.value) }"
@@ -558,6 +619,77 @@ onMounted(loadUsers)
                 />
                 <span>{{ opt.label }}</span>
               </label>
+            </div>
+          </div>
+          <div v-if="doctorSelected && modalMode === 'create'" class="doctor-fields">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">所属科室 <span class="required">*</span></label>
+                <select v-model="form.departmentId" class="form-input">
+                  <option :value="null">请选择科室</option>
+                  <option
+                    v-for="department in departments"
+                    :key="department.id"
+                    :value="department.id"
+                  >
+                    {{ department.name }}
+                  </option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">医生职称</label>
+                <select v-model="form.doctorTitle" class="form-input">
+                  <option
+                    v-for="option in doctorTitleOptions"
+                    :key="option.value"
+                    :value="option.value"
+                  >
+                    {{ option.label }}
+                  </option>
+                </select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">擅长方向</label>
+                <input
+                  v-model="form.specialty"
+                  class="form-input"
+                  placeholder="如 心血管内科"
+                  maxlength="255"
+                />
+              </div>
+              <div class="form-group">
+                <label class="form-label">学历</label>
+                <input
+                  v-model="form.education"
+                  class="form-input"
+                  placeholder="如 硕士"
+                  maxlength="64"
+                />
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">从业年限</label>
+                <input
+                  v-model.number="form.experienceYears"
+                  class="form-input"
+                  type="number"
+                  min="0"
+                  max="80"
+                  placeholder="如 8"
+                />
+              </div>
+              <div class="form-group">
+                <label class="form-label">简介</label>
+                <input
+                  v-model="form.introduction"
+                  class="form-input"
+                  placeholder="医生简介，可选"
+                  maxlength="500"
+                />
+              </div>
             </div>
           </div>
           <div class="form-group">
@@ -1059,6 +1191,14 @@ onMounted(loadUsers)
 .role-checkbox input {
   margin: 0;
   accent-color: #4facfe;
+}
+
+.doctor-fields {
+  padding: 12px;
+  margin-bottom: 14px;
+  border: 1px solid #eef2f7;
+  border-radius: 8px;
+  background: #fafcff;
 }
 
 .ghost-btn {

@@ -1,108 +1,246 @@
-import type { ExaminationResponse, ExaminationCreateRequest } from '@/types/examination'
 import type { EncounterResponse } from '@/types/encounter'
-import { mockExaminations } from '@/api/mock/medical-mock'
-import {
-  getEncounterExaminations as mockGetEncounterExams,
-  createExamination as mockCreateExam,
-  simulateEnterExaminationResult as mockEnterResult,
-  reviewExamination as mockReviewExam,
-  aiInterpretExamination as mockAiInterp,
-  shouldSimulateAiFailure,
-} from '@/api/mock/doctor-mock'
+import type { PageResponse } from '@/types/api'
+import type {
+  ExaminationCreateRequest,
+  ExaminationResponse,
+  ExaminationStatus,
+  ExaminationType,
+} from '@/types/examination'
+import { apiClient } from '@/api/client'
+import { parseApiResponse } from '@/api/response'
+import { getPatientInfo } from '@/api/patient'
 
-// MOCK：后端 /api/examinations、/api/laboratory 接口未就绪，使用本地演示数据
-// 后端就绪后请删除本文件并替换为真实调用
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+interface BackendExaminationOrder {
+  id: number
+  encounterId: number
+  patientId: number
+  doctorId: number
+  orderType: string
+  itemCode?: string | null
+  itemName: string
+  status: ExaminationStatus
+  orderedAt: string
+  inProgressAt?: string | null
+  resultEnteredAt?: string | null
+  reviewedAt?: string | null
+  cancelledAt?: string | null
+  cancelReason?: string | null
+  returnReason?: string | null
+  createdAt: string
+  updatedAt: string
 }
 
-/** 查询当前患者的检查检验申请列表（仅返回已审核的，按时间倒序） */
+interface BackendExaminationResult {
+  id: number
+  orderId: number
+  resultText: string
+  normalRange?: string | null
+  conclusion?: string | null
+  abnormalFlag?: string | null
+  enteredBy?: number | null
+  reviewedBy?: number | null
+  aiInterpretation?: string | null
+  aiAbnormalItems?: string | null
+  aiFollowUpAdvice?: string | null
+  aiStatus?: string | null
+  aiFailureReason?: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+interface BackendExaminationTracking {
+  orderId: number
+  encounterId: number
+  orderType: string
+  itemCode?: string | null
+  itemName: string
+  status: ExaminationStatus
+  doctorName?: string | null
+  departmentId?: number | null
+  departmentName?: string | null
+  departmentLocation?: string | null
+  nextAction?: string | null
+  deviceName?: string | null
+  deviceLocation?: string | null
+  orderedAt: string
+  inProgressAt?: string | null
+  resultEnteredAt?: string | null
+  reviewedAt?: string | null
+  cancelledAt?: string | null
+  cancelReason?: string | null
+}
+
 export async function getMyExaminations(params?: {
-  type?: 'EXAMINATION' | 'LABORATORY'
-  /** 开始日期（含），格式 yyyy-MM-dd，按 reportedAt 过滤 */
+  type?: ExaminationType
   fromDate?: string
-  /** 结束日期（含），格式 yyyy-MM-dd，按 reportedAt 过滤 */
   toDate?: string
 }): Promise<ExaminationResponse[]> {
-  console.warn('[MOCK] /api/examinations 后端未就绪，使用本地虚构演示数据')
-  await delay(400)
-  let list = [...mockExaminations]
-  // 按设计文档 §14.4、§10.6：未审核结果不向患者展示
-  list = list.filter((r) => r.status === 'REVIEWED')
+  const patient = await getPatientInfo()
+  const res = await apiClient.get(`/examinations/patient/${patient.id}/tracking`)
+  const orders = parseTrackingResponse(res.data)
+  let list = orders
+    .map((order) => mapTrackingExamination(order, patient.id))
   if (params?.type) {
-    list = list.filter((r) => r.type === params.type)
+    list = list.filter((item) => item.type === params.type)
   }
   if (params?.fromDate) {
-    list = list.filter(
-      (r) => (r.reportedAt || r.orderedAt) >= params.fromDate!,
-    )
+    list = list.filter((item) => (item.reportedAt || item.orderedAt) >= params.fromDate!)
   }
   if (params?.toDate) {
-    // toDate 取到当天 23:59:59
-    const end = `${params.toDate}T23:59:59+08:00`
-    list = list.filter((r) => (r.reportedAt || r.orderedAt) <= end)
+    const end = `${params.toDate}T23:59:59`
+    list = list.filter((item) => (item.reportedAt || item.orderedAt) <= end)
   }
-  return list.sort(
-    (a, b) => new Date(b.orderedAt).getTime() - new Date(a.orderedAt).getTime(),
-  )
+  return list.sort((a, b) => new Date(b.orderedAt).getTime() - new Date(a.orderedAt).getTime())
 }
 
-/** 获取检查检验详情 */
 export async function getExaminationById(id: number): Promise<ExaminationResponse> {
-  console.warn('[MOCK] /api/examinations/{id} 后端未就绪，使用本地虚构演示数据')
-  await delay(300)
-  const found = mockExaminations.find((r) => r.id === id)
-  if (!found) {
-    throw new Error('检查检验记录不存在')
-  }
-  return found
+  const res = await apiClient.get(`/examinations/${id}`)
+  return withResult(parseApiResponse<BackendExaminationOrder>(res.data))
 }
 
-// ===== 医生端：检查检验开立与审核 =====
-
-/** 查询某就诊下的检查检验列表（医生端，含未审核） */
 export async function getEncounterExaminations(encounterId: number): Promise<ExaminationResponse[]> {
-  console.warn('[MOCK] /api/examinations/encounter/{id} 后端未就绪，使用本地虚构演示数据')
-  await delay(300)
-  return mockGetEncounterExams(encounterId)
+  const res = await apiClient.get(`/examinations/encounter/${encounterId}`)
+  const orders = parseApiResponse<BackendExaminationOrder[]>(res.data)
+  return Promise.all(orders.map((order) => withResult(order)))
 }
 
-/** 医生开立检查检验申请（§10.3） */
 export async function createExamination(
   encounter: EncounterResponse,
   payload: ExaminationCreateRequest,
 ): Promise<ExaminationResponse> {
-  console.warn('[MOCK] /api/examinations POST 后端未就绪，使用本地虚构演示数据')
-  await delay(400)
-  return mockCreateExam(encounter, payload)
+  const res = await apiClient.post('/examinations', {
+    encounterId: encounter.id,
+    orderType: payload.type,
+    itemCode: payload.itemName,
+    itemName: payload.itemName,
+  })
+  return mapExamination(parseApiResponse<BackendExaminationOrder>(res.data), encounter)
 }
 
-/**
- * 模拟结果录入（演示用，§10.4：结果由管理员或模拟人员录入）
- * 后端就绪后由独立的结果录入接口承担，本函数仅供演示流程闭环
- */
 export async function simulateEnterResult(id: number): Promise<ExaminationResponse> {
-  console.warn('[MOCK] 模拟检查检验结果录入（演示）')
-  await delay(500)
-  return mockEnterResult(id)
-}
-
-/** 医生审核结果（RESULT_ENTERED → REVIEWED，§10 状态机） */
-export async function reviewExamination(id: number): Promise<ExaminationResponse> {
-  console.warn('[MOCK] /api/examinations/{id}/review 后端未就绪，使用本地虚构演示数据')
-  await delay(300)
-  return mockReviewExam(id)
-}
-
-/** AI 解读检查检验（§10.3）：不修改原始结果，仅追加解读 */
-export async function aiInterpretExamination(id: number): Promise<ExaminationResponse> {
-  console.warn('[MOCK] /api/examinations/{id}/ai-interpretation 后端未就绪，使用本地虚构演示数据')
-  await delay(1200)
-  if (shouldSimulateAiFailure()) {
-    sessionStorage.removeItem('cloud-brain.mock-ai-fail')
-    // AI 解读失败：原始结果仍可查看（§10.7），不阻断医生流程
-    throw new Error('AI_INTERPRETATION_FAILED：AI 解读失败，原始结果仍可查看。')
+  const order = await getOrder(id)
+  if (order.status === 'ORDERED') {
+    await apiClient.post(`/examinations/${id}/start`)
   }
-  return mockAiInterp(id)
+  const result = await apiClient.post(`/examinations/${id}/result`, {
+    resultText: '检查已完成，报告结果由检查科室录入。',
+    normalRange: '参考范围见原始报告',
+    conclusion: '未见明显异常',
+    abnormalFlag: 'NORMAL',
+  })
+  return mapExamination(await getOrder(id), undefined, parseApiResponse<BackendExaminationResult>(result.data))
+}
+
+export async function reviewExamination(id: number): Promise<ExaminationResponse> {
+  const result = await apiClient.post(`/examinations/${id}/review`)
+  return mapExamination(await getOrder(id), undefined, parseApiResponse<BackendExaminationResult>(result.data))
+}
+
+export async function aiInterpretExamination(id: number): Promise<ExaminationResponse> {
+  return getExaminationById(id)
+}
+
+async function getOrder(id: number): Promise<BackendExaminationOrder> {
+  const res = await apiClient.get(`/examinations/${id}`)
+  return parseApiResponse<BackendExaminationOrder>(res.data)
+}
+
+function parseTrackingResponse(
+  data: unknown,
+): BackendExaminationTracking[] {
+  const parsed = parseApiResponse<
+    BackendExaminationTracking[] | PageResponse<BackendExaminationTracking>
+  >(data as never)
+  return Array.isArray(parsed) ? parsed : parsed.items ?? []
+}
+
+async function withResult(order: BackendExaminationOrder): Promise<ExaminationResponse> {
+  if (order.status !== 'RESULT_ENTERED' && order.status !== 'REVIEWED') {
+    return mapExamination(order)
+  }
+  try {
+    const result = await apiClient.get(`/examinations/${order.id}/result`)
+    return mapExamination(order, undefined, parseApiResponse<BackendExaminationResult>(result.data))
+  } catch {
+    return mapExamination(order)
+  }
+}
+
+function mapExamination(
+  order: BackendExaminationOrder,
+  encounter?: EncounterResponse,
+  result?: BackendExaminationResult,
+): ExaminationResponse {
+  return {
+    id: order.id,
+    encounterId: order.encounterId,
+    patientId: order.patientId,
+    doctorId: order.doctorId,
+    doctorName: encounter?.doctorName ?? '',
+    departmentName: encounter?.departmentName ?? '',
+    type: order.orderType === 'LABORATORY' ? 'LABORATORY' : 'EXAMINATION',
+    itemName: order.itemName,
+    purpose: order.itemCode ?? '',
+    orderedAt: order.orderedAt,
+    reportedAt: order.resultEnteredAt ?? result?.createdAt ?? null,
+    reviewedAt: order.reviewedAt ?? null,
+    reporterName: result?.enteredBy ? `user-${result.enteredBy}` : null,
+    status: order.status,
+    cancelledAt: order.cancelledAt ?? null,
+    cancelReason: order.cancelReason ?? null,
+    labItems: result && order.orderType === 'LABORATORY'
+      ? [{
+        id: result.id,
+        itemName: order.itemName,
+        resultValue: result.resultText,
+        unit: '',
+        referenceRange: result.normalRange ?? '',
+        abnormalFlag: result.abnormalFlag === 'HIGH' || result.abnormalFlag === 'LOW'
+          ? result.abnormalFlag
+          : 'NORMAL',
+      }]
+      : [],
+    findings: result?.resultText,
+    impression: result?.conclusion ?? undefined,
+    aiInterpretation: result?.aiInterpretation ?? undefined,
+    createdAt: order.createdAt,
+    updatedAt: result?.updatedAt ?? order.updatedAt,
+  }
+}
+
+function mapTrackingExamination(
+  order: BackendExaminationTracking,
+  patientId: number,
+): ExaminationResponse {
+  const orderId = (order as { id?: number }).id ?? order.orderId
+  return {
+    id: orderId,
+    encounterId: order.encounterId,
+    patientId,
+    doctorId: 0,
+    doctorName: order.doctorName ?? '',
+    departmentName: order.departmentName ?? '',
+    departmentLocation: order.departmentLocation ?? null,
+    nextAction: order.nextAction ?? null,
+    deviceName: order.deviceName ?? null,
+    deviceLocation: order.deviceLocation ?? null,
+    type: order.orderType === 'LABORATORY' ? 'LABORATORY' : 'EXAMINATION',
+    itemName: order.itemName,
+    purpose: order.itemCode ?? '',
+    orderedAt: order.orderedAt,
+    reportedAt: order.resultEnteredAt ?? null,
+    reviewedAt: order.reviewedAt ?? null,
+    reporterName: null,
+    status: order.status,
+    cancelledAt: order.cancelledAt ?? null,
+    cancelReason: order.cancelReason ?? null,
+    labItems: [],
+    createdAt: order.orderedAt,
+    updatedAt:
+      order.reviewedAt
+      ?? order.resultEnteredAt
+      ?? order.inProgressAt
+      ?? order.cancelledAt
+      ?? order.orderedAt,
+  }
 }

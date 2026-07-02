@@ -6,6 +6,7 @@ import com.neusoft.cloudbrain.common.api.ApiResponse;
 import com.neusoft.cloudbrain.common.api.PageResponse;
 import com.neusoft.cloudbrain.common.exception.BusinessException;
 import com.neusoft.cloudbrain.doctor.dto.DoctorCreateRequest;
+import com.neusoft.cloudbrain.doctor.dto.DoctorProfileUpdateRequest;
 import com.neusoft.cloudbrain.doctor.dto.DoctorResponse;
 import com.neusoft.cloudbrain.doctor.dto.DoctorUpdateRequest;
 import com.neusoft.cloudbrain.doctor.service.DoctorService;
@@ -74,6 +75,24 @@ public class DoctorController {
             @PathVariable Long deptId,
             HttpServletRequest httpRequest) {
         List<DoctorResponse> response = doctorService.getDoctorsByDepartment(deptId);
+        return ApiResponse.success(response, (String) httpRequest.getAttribute("traceId"));
+    }
+
+    /**
+     * 医生更新本人资料
+     *
+     * 仅医生角色可调用，允许更新专长/学历/从业年限/简介，
+     * 不允许自行修改科室、职称、状态。
+     */
+    @PutMapping("/me")
+    public ApiResponse<DoctorResponse> updateMyProfile(
+            @Valid @RequestBody DoctorProfileUpdateRequest request,
+            HttpServletRequest httpRequest) {
+        AuthPrincipal currentUser = SecurityUtils.getCurrentUser();
+        if (!currentUser.roles().contains("DOCTOR")) {
+            throw new BusinessException("PERMISSION_DENIED", "仅医生可更新本人资料", 403);
+        }
+        DoctorResponse response = doctorService.updateMyProfile(currentUser.userId(), request);
         return ApiResponse.success(response, (String) httpRequest.getAttribute("traceId"));
     }
 

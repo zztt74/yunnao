@@ -16,17 +16,23 @@ import {
   aiReviewPrescription,
   confirmPrescription,
   voidPrescription,
+  getPatientPrescriptions,
 } from '@/api/prescription'
-import { mockDrugDictionary, mockPatientSummaries, type MockDrug } from '@/api/mock/doctor-mock'
+import { getDrugOptions, type DrugOption } from '@/api/drug'
+import { getPatientDetail } from '@/api/patient'
 import { useEncounterStore } from '@/stores/encounter'
+import { usePrescriptionStore } from '@/stores/prescription'
 import type {
   PrescriptionResponse,
   PrescriptionItemRequest,
   PrescriptionRiskLevel,
+  PrescriptionStatus,
+  PrescriptionAiReviewStatus,
 } from '@/types/prescription'
 
 const route = useRoute()
 const encounterStore = useEncounterStore()
+const prescriptionStore = usePrescriptionStore()
 const { activeEncounter } = storeToRefs(encounterStore)
 
 const encounterId = computed(() => Number(route.params.id))
@@ -38,6 +44,14 @@ const confirming = ref(false)
 const voiding = ref(false)
 
 const prescription = ref<PrescriptionResponse | null>(null)
+const drugs = ref<DrugOption[]>([])
+const patientAllergyText = ref('无')
+
+// F2: 历史处方（折叠区）
+const historyExpanded = ref(true)
+const historyList = ref<PrescriptionResponse[]>([])
+const historyLoading = ref(false)
+const historyLoadedFor = ref<number | null>(null)
 
 // 草稿表单
 const diagnosis = ref('')
@@ -50,14 +64,14 @@ const selectedDrugId = ref<number | null>(null)
 // 患者过敏史（用于 AI 审核与展示）
 const patientAllergies = computed(() => {
   if (!activeEncounter.value) return '无'
-  return mockPatientSummaries[activeEncounter.value.patientId]?.allergies || '无'
+  return patientAllergyText.value || '无'
 })
 
 const hasAllergyRisk = computed(
   () => patientAllergies.value && patientAllergies.value !== '无',
 )
 
-const drugOptions = computed(() => mockDrugDictionary)
+const drugOptions = computed(() => drugs.value)
 
 const status = computed(() => prescription.value?.status ?? null)
 const isDraft = computed(() => status.value === 'DRAFT')
@@ -70,7 +84,7 @@ const aiReviewStatus = computed(() => prescription.value?.aiReviewStatus ?? 'NOT
 const riskLevel = computed<PrescriptionRiskLevel | null>(() => aiReview.value?.riskLevel ?? null)
 const isHighRisk = computed(() => riskLevel.value === 'HIGH')
 
-function statusText(s: string | null): string {
+function statusText(s: PrescriptionStatus | null): string {
   switch (s) {
     case 'DRAFT':
       return '草稿'
@@ -83,7 +97,7 @@ function statusText(s: string | null): string {
   }
 }
 
-function statusClass(s: string | null): string {
+function statusClass(s: PrescriptionStatus | null): string {
   switch (s) {
     case 'DRAFT':
       return 'tag-draft'
@@ -144,14 +158,96 @@ function syncFormFromPrescription() {
 async function loadPrescription() {
   loading.value = true
   try {
-    const pres = await getEncounterPrescription(encounterId.value)
+    const [pres, drugList] = await Promise.all([
+      getEncounterPrescription(encounterId.value),
+      getDrugOptions(),
+    ])
     prescription.value = pres
+    drugs.value = drugList
+    prescriptionStore.setCurrentPrescription(pres, {
+      encounterId: encounterId.value,
+      patientId: activeEncounter.value?.patientId,
+    })
+    await loadPatientAllergies()
     if (pres) syncFormFromPrescription()
+    // F2: 加载历史处方（异步，不阻塞当前页）
+    void loadHistoryPrescriptions()
   } catch (e) {
     console.error('[Prescription] 加载失败：', e)
   } finally {
     loading.value = false
   }
+}
+
+async function loadPatientAllergies() {
+  if (!activeEncounter.value) return
+  try {
+    const patient = await getPatientDetail(activeEncounter.value.patientId)
+    patientAllergyText.value = patient.allergies || '无'
+  } catch (e) {
+    patientAllergyText.value = '无'
+    console.warn('[Prescription] patient allergy unavailable', e)
+  }
+}
+
+/** F2: 加载当前患者的历史处方（不含草稿） */
+async function loadHistoryPrescriptions(force = false) {
+  const patientId = activeEncounter.value?.patientId
+  if (!patientId) return
+  if (!force && historyLoadedFor.value === patientId && historyList.value.length > 0) {
+    return
+  }
+  historyLoading.value = true
+  try {
+    const list = await getPatientPrescriptions(patientId, { includeDraft: false })
+    // 排除当前正在编辑的就诊处方
+    const cur = prescription.value?.id
+    historyList.value = list.filter((p) => p.id !== cur)
+    historyLoadedFor.value = patientId
+    prescriptionStore.setHistory(patientId, historyList.value)
+  } catch (e) {
+    console.error('[Prescription] 历史处方加载失败：', e)
+    // 不弹错误，保持空态即可
+  } finally {
+    historyLoading.value = false
+  }
+}
+
+function toggleHistory() {
+  historyExpanded.value = !historyExpanded.value
+}
+
+/** F2: 历史处方摘要展示辅助 */
+function historyStatusText(s: PrescriptionStatus): string {
+  if (s === 'CONFIRMED') return '已确认'
+  if (s === 'VOIDED') return '已作废'
+  return '草稿'
+}
+
+function historyAiReviewText(s: PrescriptionAiReviewStatus): string {
+  if (s === 'REVIEWED') return '已审核'
+  if (s === 'PENDING') return '审核中'
+  if (s === 'FAILED') return 'AI 失败'
+  return '未审核'
+}
+
+function aiReviewTagClass(s: PrescriptionAiReviewStatus): string {
+  if (s === 'REVIEWED') return 'ai-reviewed'
+  if (s === 'PENDING') return 'ai-pending'
+  if (s === 'FAILED') return 'ai-failed'
+  return 'ai-none'
+}
+
+function drugSummary(items: PrescriptionResponse['items']): string {
+  if (!items.length) return '无药品'
+  const names = items.map((it) => it.drugName).filter(Boolean)
+  if (names.length <= 2) return names.join('、')
+  return `${names.slice(0, 2).join('、')} 等 ${names.length} 种`
+}
+
+function firstWarning(p: PrescriptionResponse): string {
+  if (!p.aiReview?.warnings?.length) return ''
+  return p.aiReview.warnings[0]
 }
 
 /** 从药品字典添加药品（预填默认用法用量） */
@@ -160,7 +256,7 @@ function addDrug() {
     ElMessage.warning('请先选择药品')
     return
   }
-  const drug = mockDrugDictionary.find((d) => d.id === selectedDrugId.value)
+  const drug = drugs.value.find((d) => d.id === selectedDrugId.value)
   if (!drug) return
   // 避免重复添加
   if (items.value.some((it) => it.drugId === drug.id)) {
@@ -477,6 +573,80 @@ onMounted(loadPrescription)
         </div>
       </div>
 
+      <!-- F2: 历史处方 -->
+      <div class="block history-block">
+        <div class="history-header" @click="toggleHistory">
+          <div class="history-title">
+            <span class="caret" :class="{ open: historyExpanded }">▸</span>
+            <span class="title-text">📋 历史处方</span>
+            <span class="history-count">
+              <template v-if="historyLoading">加载中…</template>
+              <template v-else>共 {{ historyList.length }} 条</template>
+            </span>
+          </div>
+          <button
+            class="ghost-btn sm"
+            :disabled="historyLoading"
+            @click.stop="loadHistoryPrescriptions(true)"
+          >
+            刷新
+          </button>
+        </div>
+
+        <div v-if="historyExpanded" class="history-body">
+          <div v-if="historyLoading" class="history-skeleton">
+            <div v-for="i in 2" :key="i" class="skeleton-row"></div>
+          </div>
+          <div v-else-if="historyList.length === 0" class="history-empty">
+            <div class="empty-icon">📭</div>
+            <div class="empty-text">暂无历史处方</div>
+            <div class="empty-tip">该患者当前没有已确认/已作废的处方记录</div>
+          </div>
+          <div v-else class="history-table">
+            <div class="history-row history-row-head">
+              <div class="col col-time">时间</div>
+              <div class="col col-status">状态</div>
+              <div class="col col-drugs">药品摘要</div>
+              <div class="col col-ai">AI 审核</div>
+              <div class="col col-risk">风险</div>
+            </div>
+            <div
+              v-for="h in historyList"
+              :key="h.id"
+              class="history-row"
+            >
+              <div class="col col-time">
+                {{ formatDateTime(h.confirmedAt || h.createdAt) }}
+              </div>
+              <div class="col col-status">
+                <span class="h-status" :class="`h-status-${h.status.toLowerCase()}`">
+                  {{ historyStatusText(h.status) }}
+                </span>
+              </div>
+              <div class="col col-drugs">{{ drugSummary(h.items) }}</div>
+              <div class="col col-ai">
+                <span class="ai-tag" :class="aiReviewTagClass(h.aiReviewStatus)">
+                  {{ historyAiReviewText(h.aiReviewStatus) }}
+                </span>
+                <div v-if="firstWarning(h)" class="ai-warn" :title="firstWarning(h)">
+                  ⚠ {{ firstWarning(h) }}
+                </div>
+              </div>
+              <div class="col col-risk">
+                <span
+                  v-if="h.aiReview?.riskLevel"
+                  class="risk-tag"
+                  :class="riskClass(h.aiReview.riskLevel)"
+                >
+                  {{ riskText(h.aiReview.riskLevel) }}
+                </span>
+                <span v-else class="risk-empty">—</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- 操作按钮 -->
       <div v-if="!isReadOnly" class="action-bar">
         <button
@@ -494,7 +664,16 @@ onMounted(loadPrescription)
           @click="handleAiReview"
         >
           <span v-if="reviewing" class="btn-spinner small" />
-          {{ reviewing ? 'AI 审核中…' : 'AI 审核' }}
+          {{ reviewing ? '查询中…' : '查看 AI 审核结果' }}
+        </button>
+        <button
+          v-else-if="prescription && aiReview"
+          class="ghost-btn ai-btn"
+          :disabled="reviewing"
+          @click="handleAiReview"
+        >
+          <span v-if="reviewing" class="btn-spinner small" />
+          {{ reviewing ? '刷新中…' : '刷新 AI 审核结果' }}
         </button>
         <button
           v-if="prescription"
@@ -1023,5 +1202,197 @@ onMounted(loadPrescription)
   padding: 10px 14px;
   font-size: 14px;
   color: #f56c6c;
+}
+
+/* F2: 历史处方 */
+.history-block {
+  padding: 14px 16px;
+}
+
+.history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+}
+
+.history-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.history-title .caret {
+  display: inline-block;
+  font-size: 14px;
+  color: #8e8e93;
+  transition: transform 0.2s;
+}
+
+.history-title .caret.open {
+  transform: rotate(90deg);
+}
+
+.history-count {
+  font-size: 12px;
+  color: #8e8e93;
+  font-weight: 400;
+}
+
+.history-body {
+  margin-top: 12px;
+}
+
+.history-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skeleton-row {
+  height: 40px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #f0f0f0 0%, #f8f8f8 50%, #f0f0f0 100%);
+  background-size: 200% 100%;
+  animation: hist-shine 1.4s ease-in-out infinite;
+}
+
+@keyframes hist-shine {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.history-empty {
+  background: #ffffff;
+  border: 1px dashed #d9d9d9;
+  border-radius: 8px;
+  padding: 24px 12px;
+  text-align: center;
+}
+
+.history-empty .empty-icon {
+  font-size: 28px;
+  margin-bottom: 4px;
+}
+
+.history-empty .empty-text {
+  font-size: 14px;
+  color: #475569;
+  margin-bottom: 2px;
+}
+
+.history-empty .empty-tip {
+  font-size: 12px;
+  color: #8e8e93;
+}
+
+.history-table {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.history-row {
+  display: grid;
+  grid-template-columns: 130px 80px 1fr 110px 80px;
+  align-items: center;
+  background: #ffffff;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  border: 1px solid #f0f0f0;
+  gap: 8px;
+}
+
+.history-row-head {
+  background: transparent;
+  border: none;
+  font-size: 12px;
+  color: #8e8e93;
+  font-weight: 500;
+  padding: 4px 12px;
+}
+
+.col {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.col-drugs {
+  white-space: normal;
+  word-break: break-word;
+  font-size: 12px;
+  color: #1a1a1a;
+}
+
+.h-status {
+  display: inline-block;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+
+.h-status-confirmed {
+  background: #f0fff4;
+  color: #67c23a;
+}
+
+.h-status-voided {
+  background: #fff1f0;
+  color: #f56c6c;
+}
+
+.h-status-draft {
+  background: #e6f7ff;
+  color: #1890ff;
+}
+
+.ai-tag {
+  display: inline-block;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.ai-reviewed {
+  background: #f0fff4;
+  color: #67c23a;
+}
+
+.ai-pending {
+  background: #fff7e6;
+  color: #d48806;
+}
+
+.ai-failed {
+  background: #fff1f0;
+  color: #f56c6c;
+}
+
+.ai-none {
+  background: #f0f0f0;
+  color: #8e8e93;
+}
+
+.ai-warn {
+  font-size: 11px;
+  color: #d4380d;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.risk-empty {
+  color: #c0c4cc;
+  font-size: 12px;
 }
 </style>

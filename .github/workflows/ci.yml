@@ -70,4 +70,8 @@ jobs:
         env:
           MYSQL_PASSWORD: ci-only-password
           MYSQL_ROOT_PASSWORD: ci-only-root-password
+          # 占位值即可：docker compose config --quiet 只解析文件，不启动容器
+          # 生产凭据由部署环境注入；占位字符串无敏感关键词，不会触发 secret 扫描告警
+          JWT_SECRET: ci-only-jwt-secret-not-real-for-config-validation
+          INITIAL_ADMIN_PASSWORD: ci-only-admin-password
         run: docker compose config --quiet

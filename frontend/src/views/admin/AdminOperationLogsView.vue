@@ -16,6 +16,65 @@ type ActionFilter = 'ALL' | (typeof KNOWN_ACTIONS)[number] | 'OTHER'
 const actionFilter = ref<ActionFilter>('ALL')
 const keyword = ref('')
 
+// F-HW-10：把后端审计的英文/技术枚举翻成业务可读的中文。
+// 不在表中的 targetType 会被回退到原始值，避免误翻译。
+const targetTypeLabels: Record<string, string> = {
+  USER: '账号',
+  DOCTOR: '医生',
+  PATIENT: '患者',
+  DEPARTMENT: '科室',
+  SCHEDULE: '排班',
+  APPOINTMENT: '挂号',
+  PRESCRIPTION: '处方',
+  MEDICAL_RECORD: '病历',
+  ENCOUNTER: '就诊',
+  TRIAGE: '分诊',
+  EXAMINATION: '检查',
+  EXAM: '检查',
+  DEVICE: '设备',
+  DRUG: '药品',
+  ROLE: '角色',
+  PERMISSION: '权限',
+}
+
+function targetTypeText(type: string): string {
+  if (!type) return '--'
+  return targetTypeLabels[type] ?? type
+}
+
+// 同样对原始 action 字符串做兜底翻译（后端可能下放 CREATE_PRESCRIPTION 等英文枚举）
+const actionLabels: Record<string, string> = {
+  CREATE_PRESCRIPTION: '开立处方',
+  CANCEL_PRESCRIPTION: '处方作废',
+  CONFIRM_MEDICAL_RECORD: '病历确认',
+  CONFIRM_PRESCRIPTION: '处方确认',
+  CANCEL_SCHEDULE: '排班取消',
+  DISABLE_USER: '账号停用',
+  ENABLE_USER: '账号启用',
+  RESET_PASSWORD: '重置密码',
+  DEVICE_MAINTENANCE: '设备维修',
+  SCHEDULE_UPDATE: '排班调整',
+  SCHEDULE_CREATE: '排班创建',
+}
+
+function actionText(action: string): string {
+  if (!action) return '--'
+  return actionLabels[action] ?? action
+}
+
+function targetNameText(log: OperationLog): string {
+  const name = log.targetName?.trim()
+  if (name) return name
+  if (log.targetId === null || log.targetId === undefined) return '--'
+  return `#${log.targetId}`
+}
+
+function operatorNameText(name: string): string {
+  if (!name || !name.trim()) return '系统'
+  if (name.trim().toUpperCase() === 'SYSTEM') return '系统'
+  return name
+}
+
 // 动作徽章样式映射
 const actionBadgeMap: Record<string, string> = {
   排班取消: 'badge-warn',
@@ -46,15 +105,15 @@ function formatDateTime(iso: string): string {
   }
 }
 
-function targetIdText(id: number | null): string {
-  return id === null || id === undefined ? '--' : String(id)
-}
-
 const filteredLogs = computed(() => {
   let list = logs.value
   if (actionFilter.value !== 'ALL') {
     if (actionFilter.value === 'OTHER') {
-      list = list.filter((l) => !KNOWN_ACTIONS.includes(l.action as (typeof KNOWN_ACTIONS)[number]))
+      list = list.filter(
+        (l) =>
+          !KNOWN_ACTIONS.includes(l.action as (typeof KNOWN_ACTIONS)[number]) &&
+          !Object.keys(actionLabels).includes(l.action),
+      )
     } else {
       list = list.filter((l) => l.action === actionFilter.value)
     }
@@ -65,8 +124,10 @@ const filteredLogs = computed(() => {
       (l) =>
         l.operatorName.toLowerCase().includes(kw) ||
         l.action.toLowerCase().includes(kw) ||
-        l.detail.toLowerCase().includes(kw) ||
-        l.targetType.toLowerCase().includes(kw),
+        targetTypeText(l.targetType).toLowerCase().includes(kw) ||
+        l.targetType.toLowerCase().includes(kw) ||
+        targetNameText(l).toLowerCase().includes(kw) ||
+        l.detail.toLowerCase().includes(kw),
     )
   }
   return [...list].sort(
@@ -122,7 +183,7 @@ onMounted(loadLogs)
           v-model="keyword"
           type="text"
           class="filter-input"
-          placeholder="操作人 / 动作 / 目标类型 / 详情"
+          placeholder="操作人 / 动作 / 目标 / 详情"
         />
       </div>
       <button class="ghost-btn" @click="resetFilter">重置</button>
@@ -158,22 +219,25 @@ onMounted(loadLogs)
               <th>操作时间</th>
               <th>操作人</th>
               <th>动作</th>
-              <th>目标类型</th>
-              <th>目标 ID</th>
+              <th>目标</th>
               <th>详情</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="log in filteredLogs" :key="log.id">
               <td class="cell-time">{{ formatDateTime(log.operatedAt) }}</td>
-              <td class="cell-operator">{{ log.operatorName }}</td>
+              <td class="cell-operator">{{ operatorNameText(log.operatorName) }}</td>
               <td>
-                <span class="badge" :class="actionBadgeClass(log.action)">
-                  {{ log.action }}
+                <span class="badge" :class="actionBadgeClass(actionText(log.action))">
+                  {{ actionText(log.action) }}
                 </span>
               </td>
-              <td class="cell-target-type">{{ log.targetType }}</td>
-              <td class="cell-target-id">{{ targetIdText(log.targetId) }}</td>
+              <td class="cell-target">
+                <div class="target-main">{{ targetTypeText(log.targetType) }}</div>
+                <div v-if="targetNameText(log) !== '--'" class="target-sub">
+                  {{ targetNameText(log) }}
+                </div>
+              </td>
               <td class="cell-detail">{{ log.detail }}</td>
             </tr>
           </tbody>
@@ -376,7 +440,7 @@ onMounted(loadLogs)
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
-  min-width: 760px;
+  min-width: 720px;
 }
 
 .log-table thead th {
@@ -419,6 +483,23 @@ onMounted(loadLogs)
 .cell-target-type {
   color: #475569;
   white-space: nowrap;
+}
+
+.cell-target {
+  color: #475569;
+  white-space: nowrap;
+}
+
+.target-main {
+  font-weight: 500;
+  color: #1a1a1a;
+}
+
+.target-sub {
+  font-size: 12px;
+  color: #8e8e93;
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
 }
 
 .cell-target-id {

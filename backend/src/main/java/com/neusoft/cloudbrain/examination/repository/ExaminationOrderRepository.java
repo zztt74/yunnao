@@ -29,6 +29,11 @@ public interface ExaminationOrderRepository extends JpaRepository<ExaminationOrd
     Page<ExaminationOrder> findByPatientId(Long patientId, Pageable pageable);
 
     /**
+     * 按患者 ID 查询全部申请（不分页，用于流程追踪 UF-02）
+     */
+    List<ExaminationOrder> findByPatientId(Long patientId);
+
+    /**
      * 按医生 ID 查询申请（分页）
      */
     Page<ExaminationOrder> findByDoctorId(Long doctorId, Pageable pageable);

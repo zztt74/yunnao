@@ -9,6 +9,8 @@ import com.neusoft.cloudbrain.ai.dto.PrescriptionReviewAIResult;
 import com.neusoft.cloudbrain.auth.dto.AuthPrincipal;
 import com.neusoft.cloudbrain.auth.security.SecurityUtils;
 import com.neusoft.cloudbrain.common.exception.BusinessException;
+import com.neusoft.cloudbrain.department.entity.Department;
+import com.neusoft.cloudbrain.department.repository.DepartmentRepository;
 import com.neusoft.cloudbrain.doctor.entity.Doctor;
 import com.neusoft.cloudbrain.doctor.repository.DoctorRepository;
 import com.neusoft.cloudbrain.drug.entity.Drug;
@@ -92,6 +94,12 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class PrescriptionService {
 
+    /**
+     * B-HW-02：患者端可见的处方业务状态。
+     * 仅返回 CONFIRMED、VOIDED，DRAFT 不对 Patient 暴露。
+     */
+    private static final List<String> PATIENT_VISIBLE_STATUSES = List.of("CONFIRMED", "VOIDED");
+
     private final PrescriptionRepository prescriptionRepository;
     private final PrescriptionItemRepository prescriptionItemRepository;
     private final PrescriptionReviewRepository prescriptionReviewRepository;
@@ -99,6 +107,7 @@ public class PrescriptionService {
     private final DoctorRepository doctorRepository;
     private final PatientRepository patientRepository;
     private final PatientProfileRepository patientProfileRepository;
+    private final DepartmentRepository departmentRepository;
     private final DrugRepository drugRepository;
     private final DrugInteractionRuleRepository drugInteractionRuleRepository;
     private final DrugDosageRuleRepository drugDosageRuleRepository;
@@ -565,14 +574,23 @@ public class PrescriptionService {
 
     /**
      * 按患者 ID 查询处方列表（分页）
+     *
+     * B-HW-02：患者端仅返回 CONFIRMED、VOIDED 处方，DRAFT 不对 Patients 暴露，
+     * 避免草稿被误认为同步失败。医生/管理员调用时通过身份判断不过滤。
      */
     @Transactional(readOnly = true)
     public Page<PrescriptionResponse> getPrescriptionsByPatient(Long patientId, Pageable pageable) {
         checkPatientOwnership(patientId);
-        return prescriptionRepository.findByPatientId(patientId, pageable)
-                .map(p -> toResponse(p,
-                        prescriptionItemRepository.findByPrescriptionId(p.getId()),
-                        getLatestReview(p.getId())));
+        boolean isPatient = SecurityUtils.isAuthenticated()
+                && SecurityUtils.getCurrentUser().roles() != null
+                && SecurityUtils.getCurrentUser().roles().contains("PATIENT");
+        Page<Prescription> page = isPatient
+                ? prescriptionRepository.findByPatientIdAndStatusIn(
+                        patientId, PATIENT_VISIBLE_STATUSES, pageable)
+                : prescriptionRepository.findByPatientId(patientId, pageable);
+        return page.map(p -> toResponse(p,
+                prescriptionItemRepository.findByPrescriptionId(p.getId()),
+                getLatestReview(p.getId())));
     }
 
     /**
@@ -672,6 +690,8 @@ public class PrescriptionService {
 
     /**
      * 检查处方访问权限
+     *
+     * B-HW-02：PATIENT 角色仅可访问 CONFIRMED/VOIDED 处方，DRAFT 对患者不可见。
      */
     private void checkPrescriptionAccess(Prescription prescription) {
         if (!SecurityUtils.isAuthenticated()) {
@@ -682,6 +702,10 @@ public class PrescriptionService {
             Patient currentPatient = patientRepository.findByUserId(currentUser.userId())
                     .orElseThrow(PrescriptionErrorCode.PATIENT_NOT_FOUND::toException);
             if (!currentPatient.getId().equals(prescription.getPatientId())) {
+                throw PrescriptionErrorCode.PRESCRIPTION_PERMISSION_DENIED.toException();
+            }
+            // B-HW-02：患者不可访问 DRAFT 处方
+            if (!PATIENT_VISIBLE_STATUSES.contains(prescription.getStatus())) {
                 throw PrescriptionErrorCode.PRESCRIPTION_PERMISSION_DENIED.toException();
             }
         }
@@ -714,11 +738,24 @@ public class PrescriptionService {
                         i.getDuration(), i.getQuantity(), i.getInstructions()))
                 .collect(Collectors.toList());
 
+        // B-HW-02：补齐患者端展示字段，避免前端依赖 encounter 上下文补字段
+        Doctor doctor = doctorRepository.findById(prescription.getDoctorId()).orElse(null);
+        String doctorName = doctor != null ? doctor.getName() : null;
+        String departmentName = doctor != null
+                ? departmentRepository.findById(doctor.getDepartmentId())
+                        .map(Department::getName).orElse(null)
+                : null;
+        String patientName = patientRepository.findById(prescription.getPatientId())
+                .map(Patient::getName).orElse(null);
+
         return new PrescriptionResponse(
                 prescription.getId(),
                 prescription.getEncounterId(),
                 prescription.getPatientId(),
                 prescription.getDoctorId(),
+                doctorName,
+                departmentName,
+                patientName,
                 prescription.getStatus(),
                 prescription.getAiReviewStatus(),
                 prescription.getCreatedAt(),
@@ -727,6 +764,7 @@ public class PrescriptionService {
                 prescription.getVoidedAt(),
                 prescription.getVoidedBy(),
                 prescription.getVoidedReason(),
+                prescription.getUpdatedAt(),
                 itemResponses,
                 toReviewResponse(review));
     }

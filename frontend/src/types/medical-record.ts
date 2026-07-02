@@ -64,6 +64,8 @@ export interface MedicalRecordAiRequest {
   presentIllness?: string
   pastHistory?: string
   physicalExam?: string
+  // 医患问诊对话原文，用于 AI 生成结构化病历
+  consultationTranscript?: string
   // 已有的医生最终诊断（用于回填初步诊断）
   diagnoses?: string[]
 }

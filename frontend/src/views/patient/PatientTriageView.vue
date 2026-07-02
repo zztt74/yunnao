@@ -1,11 +1,18 @@
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { consultTriage, type TriageTurn } from '@/api/triage'
+import { getDepartments } from '@/api/department'
+import { getDoctorById } from '@/api/doctor'
+import { useDoctorStore, type DoctorSummary } from '@/stores/doctor'
+import { useAppointmentStore } from '@/stores/appointment'
+import type { DoctorProfile } from '@/types/doctor'
 import type { TriageResultResponse, TriagePriority } from '@/types/triage'
 
 const router = useRouter()
+const doctorStore = useDoctorStore()
+const appointmentStore = useAppointmentStore()
 
 /**
  * 状态机：
@@ -14,6 +21,10 @@ const router = useRouter()
  * - 追问中：结果态（带可回复的追问输入框）
  * - 已完成：结果态（无追问）
  * - 失败降级：手动选科室
+ *
+ * 增强（F1）：
+ * - 成功后异步加载推荐医生卡片（2-3 张）
+ * - 医生列表加载失败时降级为"医生列表暂不可用"
  */
 
 const form = reactive({
@@ -32,7 +43,15 @@ const history = ref<TriageTurn[]>([])
 const followUpText = ref('')
 /** 已经历的总轮数（用于限制最大轮数） */
 const round = ref(0)
+const conversationId = ref<string | undefined>()
 const MAX_ROUNDS = 3
+
+/** F1: 推荐医生状态 */
+const recommendedDoctors = ref<DoctorSummary[]>([])
+const doctorsLoading = ref(false)
+const doctorsFailed = ref(false)
+/** 拉取职称/简介失败不影响主流程 */
+const doctorProfiles = ref<Map<number, DoctorProfile>>(new Map())
 
 const canSubmit = computed(
   () => form.chiefComplaint.trim().length > 0 && !submitting.value,
@@ -54,9 +73,9 @@ const priorityConfig: Record<
   { label: string; bg: string; border: string; color: string; icon: string }
 > = {
   EMERGENCY: { label: '紧急', bg: '#fff1f0', border: '#ffa39e', color: '#cf1322', icon: '🚨' },
-  HIGH: { label: '高', bg: '#fff7e6', border: '#ffd591', color: '#d4380d', icon: '⚠️' },
-  MEDIUM: { label: '中', bg: '#fffbe6', border: '#ffe58f', color: '#d48806', icon: '💡' },
-  LOW: { label: '低', bg: '#f6ffed', border: '#b7eb8f', color: '#389e0d', icon: '✓' },
+  HIGH: { label: '较高', bg: '#fff7e6', border: '#ffd591', color: '#d4380d', icon: '⚠️' },
+  MEDIUM: { label: '一般', bg: '#fffbe6', border: '#ffe58f', color: '#d48806', icon: '💡' },
+  LOW: { label: '较低', bg: '#f6ffed', border: '#b7eb8f', color: '#389e0d', icon: '✓' },
 }
 
 const showEmergency = computed(
@@ -68,16 +87,69 @@ const showEmergency = computed(
 )
 
 const canAskMore = computed(
-  () => !!triageResult.value?.followUpQuestion && round.value < MAX_ROUNDS,
+  () => round.value < MAX_ROUNDS,
 )
 
-async function callTriage(chiefComplaint: string) {
-  return await consultTriage({
+// 是否有 AI 显式追问：决定追问区显示"AI 追问"还是"自由补充"
+const hasFollowUpQuestion = computed(
+  () => !!triageResult.value?.followUpQuestion,
+)
+
+function createConversationId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `${Date.now().toString(16)}-${Math.random().toString(16).slice(2, 10)}`
+}
+
+async function callTriage(chiefComplaint: string, nextRound: number) {
+  const result = await consultTriage({
     chiefComplaint,
     duration: form.duration || undefined,
     additionalInfo: form.additionalInfo.trim() || undefined,
+    conversationId: conversationId.value,
     history: history.value,
+    round: nextRound,
   })
+  conversationId.value = result.conversationId ?? conversationId.value
+  round.value = result.round || nextRound
+  return result
+}
+
+/** F1: 加载推荐医生（不阻塞分诊结果展示）
+ *  F-HW-07：分诊结果科室变化时由 handleFollowUp / handleSubmit 显式调用此函数
+ *  以刷新推荐医生和挂号跳转信息（基于最新的 triageResult.recommendedDepartmentId）。
+ */
+async function loadRecommendedDoctors(departmentId: number) {
+  doctorsLoading.value = true
+  doctorsFailed.value = false
+  recommendedDoctors.value = []
+  try {
+    const list = await doctorStore.loadDoctorsByDepartment(departmentId, { daysAhead: 7 })
+    recommendedDoctors.value = list.slice(0, 3)
+    // 后台拉取前 3 个医生的详情（title/introduction），失败不阻塞
+    void enrichDoctorProfiles(recommendedDoctors.value)
+  } catch (e) {
+    console.error('[Triage] 加载推荐医生失败：', e)
+    doctorsFailed.value = true
+    ElMessage.warning('医生列表暂不可用，可进入科室挂号')
+  } finally {
+    doctorsLoading.value = false
+  }
+}
+
+async function enrichDoctorProfiles(list: DoctorSummary[]) {
+  // 并行拉取，单个失败不影响其他
+  await Promise.all(
+    list.map(async (d) => {
+      try {
+        const profile = await getDoctorById(d.doctorId)
+        doctorProfiles.value.set(d.doctorId, profile)
+      } catch (e) {
+        console.warn(`[Triage] 医生 ${d.doctorId} 详情加载失败：`, e)
+      }
+    }),
+  )
 }
 
 async function handleSubmit() {
@@ -91,13 +163,14 @@ async function handleSubmit() {
   aiFailed.value = false
   triageResult.value = null
   history.value = []
+  conversationId.value = createConversationId()
   round.value = 1
 
   // 用户首轮输入
   history.value.push({ role: 'user', text: form.chiefComplaint.trim() })
 
   try {
-    triageResult.value = await callTriage(form.chiefComplaint.trim())
+    triageResult.value = await callTriage(form.chiefComplaint.trim(), 1)
     history.value.push({
       role: 'ai',
       text: triageResult.value.reason,
@@ -106,6 +179,8 @@ async function handleSubmit() {
         reason: triageResult.value.reason,
       },
     })
+    // F1: 异步加载推荐医生，不 await 以避免阻塞后续追问
+    void loadRecommendedDoctors(triageResult.value.recommendedDepartmentId)
   } catch (e) {
     console.error('AI 分诊失败：', e)
     aiFailed.value = true
@@ -117,28 +192,37 @@ async function handleSubmit() {
 
 async function handleFollowUp() {
   if (!canAnswerFollowUp.value) return
-  if (!triageResult.value?.followUpQuestion) return
   if (round.value >= MAX_ROUNDS) {
     ElMessage.warning(`最多追问 ${MAX_ROUNDS} 轮`)
     return
   }
 
   const answer = followUpText.value.trim()
+  const nextRound = round.value + 1
   submitting.value = true
+  // F-HW-07：用户回复在请求前入栈历史，保证请求失败时本地历史不被清空（首轮内容保留），
+  // 也保证重试时能继续携带相同的历史。
   history.value.push({ role: 'user', text: answer })
   followUpText.value = ''
 
   try {
-    const next = await callTriage(answer)
+    const next = await callTriage(answer, nextRound)
+    // 必须在赋值前先保存旧科室，否则比较的两个值都是 next 的字段
+    const oldDeptId = triageResult.value?.recommendedDepartmentId
     triageResult.value = next
     history.value.push({
       role: 'ai',
       text: next.reason,
       meta: { followUpQuestion: next.followUpQuestion, reason: next.reason },
     })
-    round.value += 1
+    // F-HW-07：追问后如科室变化，刷新推荐医生；挂号跳转信息由 triageResult 派生，自动同步。
+    if (next.recommendedDepartmentId !== oldDeptId) {
+      void loadRecommendedDoctors(next.recommendedDepartmentId)
+    }
   } catch (e) {
     console.error('追问失败：', e)
+    // F-HW-07：请求失败时保留本地历史（不重置 history/conversationId/round/triageResult），
+    // 用户可基于已有上下文继续追问或复制到下个会话。
     ElMessage.error('AI 追问失败，请重试')
   } finally {
     submitting.value = false
@@ -147,6 +231,10 @@ async function handleFollowUp() {
 
 function goToAppointment() {
   if (triageResult.value) {
+    appointmentStore.setPreSelection({
+      departmentId: triageResult.value.recommendedDepartmentId,
+      departmentName: triageResult.value.recommendedDepartmentName,
+    })
     router.push({
       path: '/patient/appointments',
       query: {
@@ -157,23 +245,48 @@ function goToAppointment() {
   }
 }
 
-const manualDepartments = [
-  { id: 1, name: '急诊科' },
-  { id: 2, name: '神经内科' },
-  { id: 3, name: '消化内科' },
-  { id: 4, name: '内科' },
-  { id: 5, name: '骨科' },
-  { id: 6, name: '皮肤科' },
-  { id: 7, name: '全科' },
-]
+/** F1: 直接预约指定医生 */
+function bookDoctor(doctor: DoctorSummary) {
+  if (!triageResult.value) return
+  appointmentStore.setPreSelection({
+    departmentId: doctor.departmentId,
+    departmentName: doctor.departmentName,
+    doctorId: doctor.doctorId,
+    doctorName: doctor.doctorName,
+    scheduleId: doctor.nextScheduleId ?? undefined,
+  })
+  const query: Record<string, string | number> = {
+    departmentId: doctor.departmentId,
+    departmentName: doctor.departmentName,
+    doctorId: doctor.doctorId,
+    doctorName: doctor.doctorName,
+  }
+  if (doctor.nextScheduleId) {
+    query.scheduleId = doctor.nextScheduleId
+  }
+  router.push({ path: '/patient/appointments', query })
+}
+
+const manualDepartments = ref<Array<{ id: number; name: string }>>([])
 const selectedManualDeptId = ref<number | null>(null)
+
+async function loadManualDepartments() {
+  try {
+    manualDepartments.value = (await getDepartments())
+      .filter((d) => d.status === 'ENABLED')
+      .map((d) => ({ id: d.id, name: d.name }))
+  } catch (e) {
+    console.error('加载科室失败：', e)
+    ElMessage.error('科室加载失败，请稍后重试')
+  }
+}
 
 function goToManualAppointment() {
   if (selectedManualDeptId.value === null) {
     ElMessage.warning('请先选择科室')
     return
   }
-  const dept = manualDepartments.find((d) => d.id === selectedManualDeptId.value)
+  const dept = manualDepartments.value.find((d) => d.id === selectedManualDeptId.value)
   router.push({
     path: '/patient/appointments',
     query: { departmentId: dept?.id, departmentName: dept?.name },
@@ -187,9 +300,32 @@ function resetForm() {
   triageResult.value = null
   aiFailed.value = false
   history.value = []
+  conversationId.value = undefined
   followUpText.value = ''
   round.value = 0
+  recommendedDoctors.value = []
+  doctorsLoading.value = false
+  doctorsFailed.value = false
+  doctorProfiles.value.clear()
 }
+
+function formatAvailableDates(dates: string[]): string {
+  if (!dates.length) return '暂无可预约日期'
+  const today = new Date()
+  const todayStr = today.toISOString().slice(0, 10)
+  const tomorrow = new Date(today)
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  const tomorrowStr = tomorrow.toISOString().slice(0, 10)
+  const labels = dates.slice(0, 3).map((d) => {
+    if (d === todayStr) return '今天'
+    if (d === tomorrowStr) return '明天'
+    return d.slice(5).replace('-', '/')
+  })
+  if (dates.length > 3) return `${labels.join('、')} 等 ${dates.length} 天`
+  return labels.join('、')
+}
+
+onMounted(loadManualDepartments)
 </script>
 
 <template>
@@ -262,17 +398,74 @@ function resetForm() {
             class="priority-label"
             :style="{ color: priorityConfig[triageResult.priority].color }"
           >
-            {{ priorityConfig[triageResult.priority].label }}级优先
+            紧急程度：{{ priorityConfig[triageResult.priority].label }}
           </span>
-          <span class="round-tag">第 {{ round }} 轮</span>
+          <span class="round-tag">问诊轮次 {{ round }}</span>
         </div>
         <div class="dept-name">{{ triageResult.recommendedDepartmentName }}</div>
         <div class="dept-tip">推荐科室</div>
       </div>
 
-      <!-- 多轮对话快照 -->
+      <!-- F1: 推荐医生卡片 -->
+      <div class="doctors-card">
+        <div class="doctors-header">
+          <span class="doctors-title">👨‍⚕️ 推荐医生</span>
+          <span v-if="doctorsLoading" class="doctors-loading">加载中…</span>
+          <span v-else-if="!doctorsLoading && !doctorsFailed && recommendedDoctors.length > 0" class="doctors-count">
+            共 {{ recommendedDoctors.length }} 位
+          </span>
+        </div>
+
+        <div v-if="doctorsLoading" class="doctors-skeleton">
+          <div v-for="i in 2" :key="i" class="skeleton-card"></div>
+        </div>
+
+        <div v-else-if="doctorsFailed" class="doctors-fallback">
+          <div class="fallback-text">医生列表暂不可用，可进入科室挂号</div>
+        </div>
+
+        <div v-else-if="recommendedDoctors.length === 0" class="doctors-empty">
+          <div class="empty-text">该科室暂无可预约医生</div>
+        </div>
+
+        <div v-else class="doctors-list">
+          <div
+            v-for="doc in recommendedDoctors"
+            :key="doc.doctorId"
+            class="doctor-card"
+          >
+            <div class="doctor-head">
+              <div class="doctor-avatar">{{ doc.doctorName.charAt(0) }}</div>
+              <div class="doctor-meta">
+                <div class="doctor-name">{{ doc.doctorName }} 医生</div>
+                <div class="doctor-title">
+                  {{ doctorProfiles.get(doc.doctorId)?.title || doc.title }} · {{ doc.departmentName }}
+                </div>
+              </div>
+            </div>
+            <div v-if="doctorProfiles.get(doc.doctorId)?.introduction" class="doctor-intro">
+              {{ doctorProfiles.get(doc.doctorId)?.introduction }}
+            </div>
+            <div class="doctor-schedule">
+              <div class="schedule-row">
+                <span class="schedule-icon">📅</span>
+                <span class="schedule-text">{{ formatAvailableDates(doc.availableDates) }}</span>
+              </div>
+              <div class="schedule-row">
+                <span class="schedule-icon">🎫</span>
+                <span class="schedule-text">剩余 {{ doc.remainingTotal }} 个号源</span>
+              </div>
+            </div>
+            <button class="book-btn" @click="bookDoctor(doc)">
+              预约该医生
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 多轮对话快照：AI 气泡内已含 reason，避免与下方"推荐理由"重复 -->
       <div v-if="history.length > 1" class="history-card">
-        <div class="history-title">💬 对话记录</div>
+        <div class="history-title">💬 问诊对话记录</div>
         <div
           v-for="(turn, idx) in history"
           :key="idx"
@@ -286,12 +479,7 @@ function resetForm() {
         </div>
       </div>
 
-      <div class="result-section">
-        <div class="section-label">推荐理由</div>
-        <div class="section-content">{{ triageResult.reason }}</div>
-      </div>
-
-      <div class="result-section safety">
+      <div v-if="triageResult.safetyAdvice" class="result-section safety">
         <div class="section-label">⚠️ 安全提示</div>
         <div class="section-content">{{ triageResult.safetyAdvice }}</div>
       </div>
@@ -301,14 +489,20 @@ function resetForm() {
         <div class="section-content">{{ triageResult.emergencyAdvice }}</div>
       </div>
 
-      <!-- 追问输入区 -->
+      <!-- 追问 / 继续输入区 -->
       <div v-if="canAskMore" class="followup-card">
-        <div class="followup-label">AI 追问 · 第 {{ round }}/{{ MAX_ROUNDS }} 轮</div>
-        <div class="followup-question">{{ triageResult.followUpQuestion }}</div>
+        <div class="followup-label">
+          <span v-if="hasFollowUpQuestion">AI 追问 · 第 {{ round }}/{{ MAX_ROUNDS }} 轮</span>
+          <span v-else>继续描述 · 第 {{ round }}/{{ MAX_ROUNDS }} 轮</span>
+        </div>
+        <div v-if="hasFollowUpQuestion" class="followup-question">{{ triageResult.followUpQuestion }}</div>
+        <div v-else class="followup-question followup-hint">
+          如需进一步描述症状、补充病史或调整主诉，请在下方继续输入
+        </div>
         <textarea
           v-model="followUpText"
           class="form-textarea"
-          placeholder="请回复 AI 的追问..."
+          :placeholder="hasFollowUpQuestion ? '请回复 AI 的追问...' : '继续输入症状或补充信息...'"
           rows="2"
           maxlength="300"
         />
@@ -317,17 +511,12 @@ function resetForm() {
           :disabled="!canAnswerFollowUp"
           @click="handleFollowUp"
         >
-          继续追问
+          {{ hasFollowUpQuestion ? '继续追问' : '继续描述' }}
         </button>
       </div>
 
-      <div v-else-if="!triageResult.followUpQuestion" class="result-section done">
-        <div class="section-label">✅ AI 已给出最终建议</div>
-        <div class="section-content">如需进一步问诊，请重新发起问诊。</div>
-      </div>
-
       <div v-else class="result-section done">
-        <div class="section-label">⏹ 已达到最大追问轮数 ({{ MAX_ROUNDS }})</div>
+        <div class="section-label">⏹ 已达到最大问诊轮数 ({{ MAX_ROUNDS }})</div>
         <div class="section-content">如需进一步咨询，请重新发起问诊或前往科室挂号。</div>
       </div>
 
@@ -586,6 +775,189 @@ function resetForm() {
   color: #8e8e93;
 }
 
+/* F1: 推荐医生卡片 */
+.doctors-card {
+  background: linear-gradient(135deg, #f0f9ff 0%, #faf5ff 100%);
+  border: 1px solid #d6e4ff;
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+
+.doctors-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.doctors-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.doctors-loading,
+.doctors-count {
+  font-size: 12px;
+  color: #8e8e93;
+}
+
+.doctors-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.skeleton-card {
+  height: 110px;
+  border-radius: 10px;
+  background: linear-gradient(90deg, #f0f0f0 0%, #f8f8f8 50%, #f0f0f0 100%);
+  background-size: 200% 100%;
+  animation: skeleton-shine 1.4s ease-in-out infinite;
+}
+
+@keyframes skeleton-shine {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.doctors-fallback {
+  padding: 14px;
+  background: #ffffff;
+  border-radius: 10px;
+  border: 1px dashed #d9d9d9;
+  text-align: center;
+}
+
+.fallback-text {
+  font-size: 13px;
+  color: #8e8e93;
+}
+
+.doctors-empty {
+  padding: 14px;
+  background: #ffffff;
+  border-radius: 10px;
+  text-align: center;
+}
+
+.empty-text {
+  font-size: 13px;
+  color: #8e8e93;
+}
+
+.doctors-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.doctor-card {
+  background: #ffffff;
+  border: 1px solid #e8e8e8;
+  border-radius: 10px;
+  padding: 12px 14px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.doctor-card:hover {
+  border-color: #4facfe;
+  box-shadow: 0 2px 10px rgb(79 172 254 / 18%);
+}
+
+.doctor-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.doctor-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4facfe 0%, #00c6ff 100%);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.doctor-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.doctor-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin-bottom: 2px;
+}
+
+.doctor-title {
+  font-size: 12px;
+  color: #8e8e93;
+}
+
+.doctor-intro {
+  font-size: 12px;
+  color: #475569;
+  line-height: 1.5;
+  background: #f8f9fa;
+  padding: 6px 8px;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.doctor-schedule {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.schedule-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #475569;
+}
+
+.schedule-icon {
+  font-size: 13px;
+}
+
+.schedule-text {
+  font-size: 12px;
+}
+
+.book-btn {
+  width: 100%;
+  padding: 8px 0;
+  background: linear-gradient(135deg, #4facfe 0%, #00c6ff 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.book-btn:active {
+  opacity: 0.85;
+}
+
 /* 对话快照 */
 .history-card {
   background: #f8f9fa;
@@ -709,6 +1081,15 @@ function resetForm() {
   color: #1a1a1a;
   line-height: 1.6;
   margin-bottom: 10px;
+}
+
+.followup-hint {
+  color: #475569;
+  font-size: 13px;
+  background: #ffffff;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border-left: 3px solid #91d5ff;
 }
 
 .result-actions {

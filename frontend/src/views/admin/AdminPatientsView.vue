@@ -1,7 +1,8 @@
 <script setup lang="ts">
-// 患者查询（§3.3）
+// 患者管理（F-HW-06：原"患者查询"统一改为"患者管理"）
 // 设计来源：product/11_功能需求.md §3.3
-// 功能：按姓名 / 手机号 / 患者编号检索患者档案，点击展开查看过敏史与既往史
+// 功能：默认加载全部患者列表；支持按姓名 / 手机号 / 患者编号 / 状态筛选；
+// 卡片仅展示"查看档案详情"这一只读操作；不渲染任何后端未支撑的写操作。
 import { ref, computed, onMounted } from 'vue'
 import { getAdminPatients } from '@/api/admin'
 import type { PatientDetailResponse } from '@/types/patient'
@@ -14,8 +15,8 @@ const total = ref(0)
 const page = ref(1)
 const pageSize = ref(10)
 const keyword = ref('')
+const statusFilter = ref<'ACTIVE' | 'INACTIVE' | ''>('ACTIVE')
 const expandedId = ref<number | null>(null)
-const hasSearched = ref(false)
 
 const totalPages = computed(() =>
   Math.max(1, Math.ceil(total.value / pageSize.value)),
@@ -27,13 +28,15 @@ async function loadPatients() {
   try {
     const res: PageResult<PatientDetailResponse> = await getAdminPatients({
       keyword: keyword.value.trim() || undefined,
+      status: statusFilter.value || undefined,
       page: page.value,
       pageSize: pageSize.value,
     })
     patients.value = res.list
     total.value = res.total
   } catch (e) {
-    loadError.value = e instanceof Error ? e.message : '加载患者列表失败'
+    const msg = e instanceof Error && e.message ? e.message : '加载患者列表失败'
+    loadError.value = msg
     console.error('[AdminPatients] 加载失败：', e)
   } finally {
     loading.value = false
@@ -43,15 +46,14 @@ async function loadPatients() {
 function onSearch() {
   page.value = 1
   expandedId.value = null
-  hasSearched.value = true
   loadPatients()
 }
 
 function onReset() {
   keyword.value = ''
+  statusFilter.value = 'ACTIVE'
   page.value = 1
   expandedId.value = null
-  hasSearched.value = false
   loadPatients()
 }
 
@@ -92,7 +94,7 @@ function formatDate(iso: string): string {
   }
 }
 
-function textOrNone(text: string): string {
+function textOrNone(text: string | null | undefined): string {
   return text && text.trim() ? text : '无'
 }
 
@@ -102,11 +104,11 @@ onMounted(loadPatients)
 <template>
   <div class="admin-patients">
     <div class="page-header">
-      <div class="page-title">患者查询</div>
-      <div class="page-sub">按姓名 / 手机号 / 患者编号检索患者档案</div>
+      <div class="page-title">患者管理</div>
+      <div class="page-sub">查看与检索平台内所有患者档案，支持按姓名 / 手机号 / 患者编号 / 状态筛选</div>
     </div>
 
-    <!-- 搜索栏 -->
+    <!-- 筛选栏 -->
     <div class="search-card">
       <input
         v-model="keyword"
@@ -115,6 +117,11 @@ onMounted(loadPatients)
         placeholder="输入姓名 / 手机号 / 患者编号"
         @keyup.enter="onSearch"
       />
+      <select v-model="statusFilter" class="search-select" @change="onSearch">
+        <option value="">全部状态</option>
+        <option value="ACTIVE">在档</option>
+        <option value="INACTIVE">已停用</option>
+      </select>
       <button class="primary-btn" @click="onSearch">搜索</button>
       <button class="ghost-btn" @click="onReset">重置</button>
     </div>
@@ -136,7 +143,7 @@ onMounted(loadPatients)
     <div v-else-if="patients.length === 0" class="state-card">
       <div class="state-title">暂无患者记录</div>
       <div class="state-desc">
-        {{ hasSearched ? '没有符合查询条件的患者，请更换关键字重试' : '当前没有任何患者档案' }}
+        {{ keyword || statusFilter ? '没有符合筛选条件的患者，请更换关键字或状态重试' : '当前没有任何患者档案' }}
       </div>
     </div>
 
@@ -335,6 +342,30 @@ onMounted(loadPatients)
 }
 
 .search-input:focus {
+  border-color: #4facfe;
+  box-shadow: 0 0 0 3px rgb(79 172 254 / 12%);
+  background-color: #ffffff;
+}
+
+.search-select {
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #1a1a1a;
+  outline: none;
+  background: #f8f9fa;
+  cursor: pointer;
+  min-width: 120px;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238e8e93' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 26px;
+}
+
+.search-select:focus {
   border-color: #4facfe;
   box-shadow: 0 0 0 3px rgb(79 172 254 / 12%);
   background-color: #ffffff;

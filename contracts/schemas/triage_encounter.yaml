@@ -29,6 +29,21 @@ TriageAnalyzeRequest:
       type: string
       maxLength: 2000
       description: 补充信息
+    conversationId:
+      type: string
+      minLength: 8
+      maxLength: 36
+      description: 多轮问诊会话 ID，前端生成并在同一会话内复用
+    history:
+      type: array
+      description: 多轮问诊历史，仅允许症状/主诉内容，不得包含姓名、手机号等隐私
+      items:
+        $ref: '#/ChatMessage'
+    round:
+      type: integer
+      minimum: 1
+      maximum: 20
+      description: 当前问诊轮次
 
 TriageAnalyzeResponse:
   type: object
@@ -83,6 +98,31 @@ TriageAnalyzeResponse:
     createdAt:
       type: string
       format: date-time
+    conversationId:
+      type: [string, 'null']
+      description: 回显请求中的多轮问诊会话 ID
+    round:
+      type: integer
+      description: 当前问诊轮次
+    isFinal:
+      type: boolean
+      description: AI 是否已给出最终建议
+    followUpQuestion:
+      type: [string, 'null']
+      description: AI 主动追问的问题，为空时前端可自由补充症状
+
+ChatMessage:
+  type: object
+  required:
+    - role
+    - content
+  properties:
+    role:
+      type: string
+      enum: [USER, ASSISTANT]
+    content:
+      type: string
+      maxLength: 2000
 
 RecommendedSchedule:
   type: object
@@ -111,6 +151,46 @@ RecommendedSchedule:
     endTime:
       type: string
       format: date-time
+    remainingCount:
+      type: integer
+
+TriageRecommendedDoctorResponse:
+  type: object
+  properties:
+    doctorId:
+      type: integer
+      format: int64
+    doctorName:
+      type: string
+    doctorTitle:
+      type: [string, 'null']
+    departmentId:
+      type: integer
+      format: int64
+    departmentName:
+      type: string
+    specialty:
+      type: [string, 'null']
+    availableSchedules:
+      type: array
+      items:
+        $ref: '#/TriageRecommendedDoctorSchedule'
+
+TriageRecommendedDoctorSchedule:
+  type: object
+  properties:
+    scheduleId:
+      type: integer
+      format: int64
+    scheduleDate:
+      type: string
+      format: date
+    startTime:
+      type: string
+      description: 开始时间，后端当前以字符串返回
+    endTime:
+      type: string
+      description: 结束时间，后端当前以字符串返回
     remainingCount:
       type: integer
 
@@ -156,6 +236,58 @@ TriageRecordResponse:
     updatedAt:
       type: string
       format: date-time
+
+ExaminationTrackingResponse:
+  type: object
+  properties:
+    orderId:
+      type: integer
+      format: int64
+    encounterId:
+      type: integer
+      format: int64
+    orderType:
+      type: string
+      enum: [EXAMINATION, LABORATORY]
+    itemCode:
+      type: [string, 'null']
+    itemName:
+      type: string
+    status:
+      type: string
+      enum: [ORDERED, IN_PROGRESS, RESULT_ENTERED, REVIEWED, CANCELLED]
+    doctorName:
+      type: [string, 'null']
+    departmentId:
+      type: [integer, 'null']
+      format: int64
+    departmentName:
+      type: [string, 'null']
+    departmentLocation:
+      type: [string, 'null']
+    nextAction:
+      type: [string, 'null']
+    deviceName:
+      type: [string, 'null']
+    deviceLocation:
+      type: [string, 'null']
+    orderedAt:
+      type: string
+      format: date-time
+    inProgressAt:
+      type: [string, 'null']
+      format: date-time
+    resultEnteredAt:
+      type: [string, 'null']
+      format: date-time
+    reviewedAt:
+      type: [string, 'null']
+      format: date-time
+    cancelledAt:
+      type: [string, 'null']
+      format: date-time
+    cancelReason:
+      type: [string, 'null']
 
 # ============================================================
 # 就诊 (Encounter)

@@ -23,6 +23,8 @@ public interface DeviceRepository extends JpaRepository<Device, Long> {
 
     Optional<Device> findByCode(String code);
 
+    boolean existsByCode(String code);
+
     List<Device> findByStatus(String status);
 
     List<Device> findByDepartmentId(Long departmentId);

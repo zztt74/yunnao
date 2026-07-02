@@ -10,11 +10,13 @@ import {
   cancelAppointment,
 } from '@/api/appointment'
 import { getPatientInfo } from '@/api/patient'
-import { mockDepartments, getMockSchedules } from '@/api/mock/medical-mock'
+import { getDepartments } from '@/api/department'
+import { useAppointmentStore } from '@/stores/appointment'
 import type { AppointmentResponse, ScheduleResponse, AppointmentStatus } from '@/types/appointment'
 
 const route = useRoute()
 const router = useRouter()
+const appointmentStore = useAppointmentStore()
 
 /* ============ 子 Tab ============ */
 type SubTab = 'mine' | 'book'
@@ -137,9 +139,20 @@ const bookForm = reactive({
 const schedules = ref<ScheduleResponse[]>([])
 const selectedSchedule = ref<ScheduleResponse | null>(null)
 const confirmDialogVisible = ref(false)
+/** F1: 预选医生 ID（分诊跳转来时高亮） */
+const preselectedDoctorId = ref<number | null>(null)
+/** F1: 预选 scheduleId（如来自分诊结果卡），自动展开确认 */
+const preselectedScheduleId = ref<number | null>(null)
 
 async function loadDepartments() {
-  departments.value = mockDepartments
+  try {
+    departments.value = (await getDepartments())
+      .filter((d) => d.status === 'ENABLED')
+      .map((d) => ({ id: d.id, name: d.name }))
+  } catch (e) {
+    console.error('加载科室失败：', e)
+    ElMessage.error('加载科室失败')
+  }
 }
 
 async function loadSchedules() {
@@ -186,6 +199,9 @@ async function confirmBooking() {
     ElMessage.success('预约成功！')
     confirmDialogVisible.value = false
     selectedSchedule.value = null
+    preselectedDoctorId.value = null
+    preselectedScheduleId.value = null
+    appointmentStore.clearPreSelection()
     // 切换到「我的挂号」并刷新
     subTab.value = 'mine'
     await loadAppointments()
@@ -214,19 +230,6 @@ function formatWeek(date: string): string {
 function formatTimeRange(
   item: AppointmentResponse | { bookedAt: string; scheduleId: number },
 ): string {
-  // 优先从排班取 startTime / endTime，这样显示的是真实预约就诊时段；
-  // MOCK 阶段排班数据来自 mockScheduleCache
-  try {
-    const schedule = getMockSchedules({}).find((s) => s.id === item.scheduleId)
-    if (schedule) {
-      const start = dayjs(schedule.startTime)
-      const end = dayjs(schedule.endTime)
-      return `${start.format('YYYY-MM-DD HH:mm')} - ${end.format('HH:mm')}`
-    }
-  } catch {
-    /* ignore */
-  }
-  // 兜底：取 bookedAt
   return dayjs(item.bookedAt).format('YYYY-MM-DD HH:mm')
 }
 
@@ -236,18 +239,41 @@ function formatScheduleTime(s: ScheduleResponse): string {
   return `${start.format('HH:mm')} - ${end.format('HH:mm')}`
 }
 
-/* ============ 监听：分诊跳转过来时预选科室 ============ */
+/* ============ 监听：分诊跳转过来时预选科室/医生/排班 ============ */
+function readPreselection() {
+  // 优先从 store 取（跳转时已写入），否则从 query 兜底
+  const fromStore = appointmentStore.preSelection
+  const fromQuery = appointmentStore.buildPreSelectionFromQuery(
+    route.query as Record<string, unknown>,
+  )
+  return fromStore ?? fromQuery
+}
+
+/** 初始化预选阶段：避免 watch 重复触发 loadSchedules */
+let isInitializing = false
+
 onMounted(async () => {
   await loadAppointments()
-  const qDept = Number(route.query.departmentId)
-  const qDeptName = String(route.query.departmentName || '')
-  if (qDept && qDeptName) {
+  const pre = readPreselection()
+  if (pre?.departmentId) {
     subTab.value = 'book'
     await loadDepartments()
-    // 等待 departments 加载完成后设置
-    bookForm.departmentId = qDept
+    preselectedDoctorId.value = pre.doctorId ?? null
+    preselectedScheduleId.value = pre.scheduleId ?? null
+    // 在初始化标记内统一设置表单值，避免 watch 重复触发
+    isInitializing = true
+    bookForm.departmentId = pre.departmentId
     bookForm.date = ''
+    isInitializing = false
     await loadSchedules()
+    // 若分诊结果直接带了 scheduleId 且命中排班列表，自动打开确认弹窗
+    if (preselectedScheduleId.value != null) {
+      const hit = schedules.value.find((s) => s.id === preselectedScheduleId.value)
+      if (hit && hit.remainingCount > 0 && hit.status !== 'CANCELLED') {
+        selectedSchedule.value = hit
+        confirmDialogVisible.value = true
+      }
+    }
   } else {
     await loadDepartments()
   }
@@ -256,6 +282,7 @@ onMounted(async () => {
 watch(
   () => [bookForm.departmentId, bookForm.date],
   () => {
+    if (isInitializing) return
     selectedSchedule.value = null
     loadSchedules()
   },
@@ -400,7 +427,15 @@ const maxDate = dayjs().add(6, 'day').format('YYYY-MM-DD')
           <div class="empty-tip">请尝试切换其他科室或日期</div>
         </div>
         <div v-else>
-          <div class="section-title">可选排班（{{ schedules.length }}）</div>
+          <div class="section-title">
+            可选排班（{{ schedules.length }}）
+            <span v-if="preselectedDoctorId" class="preselect-tip">
+              已为您预选
+              <template v-if="schedules.find((x) => x.doctorId === preselectedDoctorId)">
+                {{ schedules.find((x) => x.doctorId === preselectedDoctorId)?.doctorName }} 医生
+              </template>
+            </span>
+          </div>
           <div class="schedule-list">
             <div
               v-for="s in schedules"
@@ -409,6 +444,7 @@ const maxDate = dayjs().add(6, 'day').format('YYYY-MM-DD')
               :class="{
                 full: s.remainingCount <= 0,
                 selected: selectedSchedule?.id === s.id,
+                preselected: preselectedDoctorId === s.doctorId,
               }"
               @click="pickSchedule(s)"
             >
@@ -423,6 +459,9 @@ const maxDate = dayjs().add(6, 'day').format('YYYY-MM-DD')
                 <div class="schedule-doctor">
                   <span class="doctor-avatar small">{{ s.doctorName.charAt(0) }}</span>
                   <span class="doctor-name">{{ s.doctorName }} 医生</span>
+                  <span v-if="preselectedDoctorId === s.doctorId" class="preselect-tag">
+                    推荐
+                  </span>
                 </div>
                 <div class="schedule-remaining">
                   <template v-if="s.remainingCount <= 0">
@@ -1033,6 +1072,28 @@ const maxDate = dayjs().add(6, 'day').format('YYYY-MM-DD')
 .schedule-card.selected {
   border-color: #4facfe;
   box-shadow: 0 2px 12px rgb(79 172 254 / 25%);
+}
+
+.schedule-card.preselected {
+  border-color: #9b59b6;
+  box-shadow: 0 0 0 2px rgb(155 89 182 / 12%);
+}
+
+.preselect-tag {
+  font-size: 11px;
+  padding: 1px 6px;
+  background: #f9f0ff;
+  color: #9b59b6;
+  border-radius: 6px;
+  margin-left: 4px;
+  font-weight: 500;
+}
+
+.preselect-tip {
+  font-size: 12px;
+  color: #9b59b6;
+  font-weight: 400;
+  margin-left: 6px;
 }
 
 .schedule-head {

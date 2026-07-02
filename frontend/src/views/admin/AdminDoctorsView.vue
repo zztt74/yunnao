@@ -31,7 +31,7 @@ const departments = ref<DepartmentResponse[]>([])
 
 // 筛选
 const filterDeptId = ref<number | ''>('')
-const filterStatus = ref<DoctorManageStatus | ''>('')
+const filterStatus = ref<DoctorManageStatus | ''>('ACTIVE')
 const keyword = ref('')
 
 const filteredDoctors = computed(() => {
@@ -78,8 +78,11 @@ const form = reactive<{
 
 const titleOptions = ['主任医师', '副主任医师', '主治医师', '住院医师']
 
+// F-HW-05：与后端密码契约保持一致（最小 8 位），前端放行后才能与后端通过。
+const MIN_PASSWORD_LENGTH = 8
+
 const usernameValid = computed(() => /^[A-Za-z0-9_.]{3,32}$/.test(form.username))
-const passwordValid = computed(() => form.password.length >= 6)
+const passwordValid = computed(() => form.password.length >= MIN_PASSWORD_LENGTH)
 const nameValid = computed(() => form.name.trim().length >= 2)
 const titleValid = computed(() => form.title.trim().length > 0)
 const deptValid = computed(() => form.departmentId !== '' && form.departmentId !== null)
@@ -178,7 +181,7 @@ async function handleSubmit() {
     return
   }
   if (modalMode.value === 'create' && !passwordValid.value) {
-    ElMessage.warning('初始密码至少 6 位')
+    ElMessage.warning(`初始密码至少 ${MIN_PASSWORD_LENGTH} 位`)
     return
   }
   if (!phoneValid.value) {
@@ -190,6 +193,12 @@ async function handleSubmit() {
     return
   }
   saving.value = true
+  // F-HW-05：保留后端返回的精确 message，避免被默认 "Request failed with status code 400" 覆盖。
+  // 由 api/client.ts 响应拦截器将后端 ApiResponse.message 写入 axios error.message。
+  const showError = (e: unknown) => {
+    const msg = e instanceof Error && e.message ? e.message : '保存失败'
+    ElMessage.error(msg)
+  }
   try {
     if (modalMode.value === 'create') {
       const payload: DoctorCreateRequest = {
@@ -213,6 +222,7 @@ async function handleSubmit() {
       ElMessage.success('医生账号已创建')
     } else if (editingId.value !== null) {
       const payload: DoctorUpdateRequest = {
+        name: form.name.trim(),
         title: form.title.trim(),
         departmentId: form.departmentId as number,
         phone: form.phone.trim(),
@@ -226,7 +236,7 @@ async function handleSubmit() {
     }
     modalVisible.value = false
   } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '保存失败')
+    showError(e)
     console.error('[AdminDoctors] 保存失败：', e)
   } finally {
     saving.value = false
@@ -413,9 +423,12 @@ onMounted(loadAll)
                   type="password"
                   class="form-input"
                   :class="{ 'input-error': form.password && !passwordValid }"
-                  placeholder="至少 6 位"
+                  :placeholder="`至少 ${MIN_PASSWORD_LENGTH} 位`"
                   maxlength="64"
                 />
+                <div v-if="form.password && !passwordValid" class="form-hint err">
+                  密码长度需不少于 {{ MIN_PASSWORD_LENGTH }} 位
+                </div>
               </div>
             </div>
           </template>
@@ -1020,6 +1033,20 @@ onMounted(loadAll)
 
 .form-input.input-error {
   border-color: #f56c6c;
+}
+
+.form-hint {
+  font-size: 12px;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.form-hint.err {
+  color: #f56c6c;
+}
+
+.form-hint.ok {
+  color: #67c23a;
 }
 
 .form-textarea {

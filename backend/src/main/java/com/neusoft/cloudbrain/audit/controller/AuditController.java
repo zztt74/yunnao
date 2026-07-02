@@ -3,10 +3,13 @@ package com.neusoft.cloudbrain.audit.controller;
 import com.neusoft.cloudbrain.audit.dto.AIInvocationAttemptResponse;
 import com.neusoft.cloudbrain.audit.dto.AIInvocationResponse;
 import com.neusoft.cloudbrain.audit.dto.AuditLogResponse;
+import com.neusoft.cloudbrain.audit.entity.AIInvocation;
+import com.neusoft.cloudbrain.audit.entity.AIInvocationAttempt;
 import com.neusoft.cloudbrain.audit.entity.AuditLog;
 import com.neusoft.cloudbrain.audit.service.AuditService;
 import com.neusoft.cloudbrain.common.api.ApiResponse;
 import com.neusoft.cloudbrain.common.api.PageResponse;
+import com.neusoft.cloudbrain.common.api.PageUtils;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.Max;
 import org.springframework.data.domain.Page;
@@ -97,12 +100,53 @@ public class AuditController {
     }
 
     /**
+     * AI 调用日志分页列表（B5）
+     *
+     * 管理端 AI 日志页分页显示真实调用记录，可点开某条查看 attempts（走详情接口）。
+     * 不泄露 API Key、完整敏感请求头（实体本身不存储这些）。
+     * success：true=仅 SUCCESS，false=非 SUCCESS（含 FAILED/PENDING），不传=全部。
+     */
+    @GetMapping("/ai/invocations")
+    public ApiResponse<PageResponse<AIInvocationResponse>> listInvocations(
+            @RequestParam(required = false) String capability,
+            @RequestParam(required = false) Boolean success,
+            @RequestParam(required = false) String businessType,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(required = false) Integer pageSize,
+            @RequestParam(required = false) Integer size,
+            HttpServletRequest httpRequest) {
+        int resolvedSize = PageUtils.resolvePageSize(pageSize, size);
+        Pageable pageable = PageUtils.toPageable(page, resolvedSize);
+        LocalDateTime start = startDate != null ? startDate.atStartOfDay() : null;
+        LocalDateTime end = endDate != null ? endDate.plusDays(1).atStartOfDay() : null;
+        var result = auditService.listInvocations(
+                capability, success, businessType, start, end, pageable);
+        List<AIInvocationResponse> items = result.getContent().stream()
+                .map(inv -> {
+                    AIInvocationAttempt latest = auditService.getLatestAttempt(inv.getId());
+                    return AIInvocationResponse.from(inv, latest);
+                })
+                .toList();
+        PageResponse<AIInvocationResponse> pageResponse = new PageResponse<>(
+                items,
+                result.getNumber() + 1,
+                result.getSize(),
+                result.getTotalElements(),
+                result.getTotalPages());
+        return ApiResponse.success(pageResponse, (String) httpRequest.getAttribute("traceId"));
+    }
+
+    /**
      * AI 调用详情
      */
     @GetMapping("/ai/invocations/{id}")
     public ApiResponse<AIInvocationResponse> getInvocation(
             @PathVariable Long id, HttpServletRequest httpRequest) {
-        return ApiResponse.success(AIInvocationResponse.from(auditService.getInvocation(id)),
+        AIInvocation invocation = auditService.getInvocation(id);
+        AIInvocationAttempt latest = invocation != null ? auditService.getLatestAttempt(id) : null;
+        return ApiResponse.success(AIInvocationResponse.from(invocation, latest),
                 (String) httpRequest.getAttribute("traceId"));
     }
 

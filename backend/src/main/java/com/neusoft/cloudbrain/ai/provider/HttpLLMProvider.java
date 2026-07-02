@@ -2,6 +2,7 @@ package com.neusoft.cloudbrain.ai.provider;
 
 import com.neusoft.cloudbrain.ai.config.AIProperties;
 import com.neusoft.cloudbrain.ai.exception.AIProviderException;
+import com.neusoft.cloudbrain.triage.dto.ChatMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -13,6 +14,7 @@ import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -42,7 +44,8 @@ public class HttpLLMProvider implements AIProvider {
 
     @Override
     public String name() {
-        return "HTTP";
+        // B-HW-11：真实 DeepSeek 调用统一展示为 DeepSeek，便于审计区分。
+        return "DeepSeek";
     }
 
     @Override
@@ -98,14 +101,31 @@ public class HttpLLMProvider implements AIProvider {
 
     /**
      * 构建请求体（OpenAI 兼容 Chat Completion 格式）
+     *
+     * B-HW-07：history 中的 USER/ASSISTANT 消息按顺序拼接到 system 与当前 user 之间，
+     * 使 DeepSeek 能基于多轮上下文给出综合分诊建议。
      */
     private Map<String, Object> buildRequestBody(AIProviderRequest request) {
+        List<Map<String, Object>> messages = new ArrayList<>();
+        messages.add(Map.of("role", "system", "content",
+                request.systemPrompt() != null ? request.systemPrompt() : ""));
+
+        List<ChatMessage> history = request.history();
+        if (history != null) {
+            for (ChatMessage msg : history) {
+                if (msg == null || msg.content() == null || msg.content().isBlank()) {
+                    continue;
+                }
+                String role = "ASSISTANT".equals(msg.role()) ? "assistant" : "user";
+                messages.add(Map.of("role", role, "content", msg.content()));
+            }
+        }
+
+        messages.add(Map.of("role", "user", "content", request.sanitizedInput()));
+
         return Map.of(
                 "model", aiProperties.getHttp().getModel(),
-                "messages", List.of(
-                        Map.of("role", "system", "content",
-                                request.systemPrompt() != null ? request.systemPrompt() : ""),
-                        Map.of("role", "user", "content", request.sanitizedInput())),
+                "messages", messages,
                 "temperature", 0.3);
     }
 

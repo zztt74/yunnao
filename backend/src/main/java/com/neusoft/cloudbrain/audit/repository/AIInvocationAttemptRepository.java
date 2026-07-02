@@ -14,4 +14,9 @@ public interface AIInvocationAttemptRepository extends JpaRepository<AIInvocatio
      * 按调用记录 ID 查询所有尝试
      */
     List<AIInvocationAttempt> findByInvocationIdOrderByAttemptIndexAsc(Long invocationId);
+
+    /**
+     * B-HW-11：按调用记录 ID 查询所有尝试（倒序，取最新 attempt）
+     */
+    List<AIInvocationAttempt> findByInvocationIdOrderByAttemptIndexDesc(Long invocationId);
 }

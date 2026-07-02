@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref, onMounted, computed } from 'vue'
+import { reactive, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
@@ -7,115 +7,25 @@ import { useAuthStore } from '@/stores/auth'
 const router = useRouter()
 const authStore = useAuthStore()
 
-/** 记住账号存储 key（仅存账号，不存密码，符合安全规范） */
 const REMEMBER_KEY = 'cloud-brain.remember-username'
 
-/** 登录表单 */
 const loginForm = reactive({
   username: '',
   password: '',
   rememberMe: false,
 })
 
-/** 表单加载状态 */
 const loading = ref(false)
-
-/** 表单引用 */
 const formRef = ref()
 
-/** 表单校验规则 */
 const rules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 6, message: '密码长度不少于6位', trigger: 'blur' },
+    { min: 6, message: '密码长度不少于 6 位', trigger: 'blur' },
   ],
 }
 
-/* ========== 滑块验证 ========== */
-const sliderVerified = ref(false)
-const sliderLeft = ref(0)
-const sliderDragging = ref(false)
-const sliderContainerRef = ref<HTMLElement | null>(null)
-const hasMoved = ref(false)
-
-const MIN_MOVE_DISTANCE = 5
-
-const sliderMax = computed(() => {
-  if (!sliderContainerRef.value) return 0
-  const track = sliderContainerRef.value.querySelector('.slider-track') as HTMLElement
-  const btn = sliderContainerRef.value.querySelector('.slider-btn') as HTMLElement
-  if (!track || !btn) return 0
-  return track.offsetWidth - btn.offsetWidth
-})
-
-const sliderProgress = computed(() => {
-  if (!sliderMax.value) return 0
-  return Math.min(100, (sliderLeft.value / sliderMax.value) * 100)
-})
-
-let startX = 0
-let startLeft = 0
-
-function onSliderMouseDown(e: MouseEvent | TouchEvent) {
-  if (sliderVerified.value) return
-  sliderDragging.value = true
-  hasMoved.value = false
-  startX = 'touches' in e ? e.touches[0].clientX : e.clientX
-  startLeft = sliderLeft.value
-  document.addEventListener('mousemove', onSliderMove)
-  document.addEventListener('mouseup', onSliderUp)
-  document.addEventListener('touchmove', onSliderMove, { passive: false })
-  document.addEventListener('touchend', onSliderUp)
-}
-
-function onSliderMove(e: MouseEvent | TouchEvent) {
-  if (!sliderDragging.value) return
-  e.preventDefault?.()
-  const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
-  const diff = clientX - startX
-
-  if (Math.abs(diff) > MIN_MOVE_DISTANCE) {
-    hasMoved.value = true
-  }
-
-  if (!hasMoved.value) return
-
-  const max = sliderMax.value
-  if (max <= 0) return
-
-  const next = Math.max(0, Math.min(max, startLeft + diff))
-  sliderLeft.value = next
-  if (next >= max) {
-    sliderVerified.value = true
-    sliderDragging.value = false
-    removeSliderListeners()
-  }
-}
-
-function onSliderUp() {
-  if (!sliderDragging.value) return
-  sliderDragging.value = false
-  if (!sliderVerified.value) {
-    sliderLeft.value = 0
-  }
-  removeSliderListeners()
-}
-
-function removeSliderListeners() {
-  document.removeEventListener('mousemove', onSliderMove)
-  document.removeEventListener('mouseup', onSliderUp)
-  document.removeEventListener('touchmove', onSliderMove)
-  document.removeEventListener('touchend', onSliderUp)
-}
-
-function resetSlider() {
-  sliderVerified.value = false
-  sliderLeft.value = 0
-  hasMoved.value = false
-}
-
-/* ========== 记住账号 ========== */
 function loadRememberedUsername() {
   const saved = localStorage.getItem(REMEMBER_KEY)
   if (saved) {
@@ -132,53 +42,24 @@ function saveRememberedUsername() {
   }
 }
 
-/**
- * 处理登录
- */
 async function handleLogin() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
 
-  if (!sliderVerified.value) {
-    ElMessage.warning('请先完成滑块验证')
-    return
-  }
-
   loading.value = true
   try {
-    try {
-      await authStore.login({
-        username: loginForm.username,
-        password: loginForm.password,
-      })
-    } catch (e: any) {
-      // 后端接口未就绪时使用演示模式
-      const msg = e?.response?.data?.message || e?.message || ''
-      console.warn('登录接口调用失败，进入演示模式：', msg)
-
-      // 演示用：根据用户名模拟角色
-      const username = loginForm.username.toLowerCase()
-      let role: 'PATIENT' | 'DOCTOR' | 'ADMIN' = 'PATIENT'
-      if (username === 'admin') role = 'ADMIN'
-      else if (username === 'doctor') role = 'DOCTOR'
-
-      authStore.establishSession('mock-token', {
-        userId: 1,
-        username: loginForm.username,
-        roles: [role],
-        mustChangePassword: false,
-      })
-      ElMessage.info('演示模式登录成功')
-    }
-
+    await authStore.login({
+      username: loginForm.username,
+      password: loginForm.password,
+    })
     saveRememberedUsername()
-    resetSlider()
 
-    // 根据角色跳转
     const role = authStore.primaryRole
     if (role === 'ADMIN') router.push('/admin')
     else if (role === 'DOCTOR') router.push('/doctor')
     else router.push('/patient')
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || e?.message || '登录失败')
   } finally {
     loading.value = false
   }
@@ -188,22 +69,17 @@ function goRegister() {
   router.push('/register')
 }
 
-onMounted(() => {
-  loadRememberedUsername()
-})
+onMounted(loadRememberedUsername)
 </script>
 
 <template>
   <div class="home-page">
-    <!-- 主内容区 -->
     <div class="home-container">
-      <!-- 左侧：平台信息 -->
       <div class="home-branding">
         <h1 class="home-title">智慧云脑诊疗平台</h1>
         <p class="home-subtitle">AI 驱动的智能医疗协作系统</p>
       </div>
 
-      <!-- 右侧：登录卡片 -->
       <div class="home-login-card">
         <h2 class="login-title">账号登录</h2>
         <el-form
@@ -231,55 +107,11 @@ onMounted(() => {
               show-password
             />
           </el-form-item>
-
-          <!-- 滑块验证 -->
-          <el-form-item>
-            <div
-              ref="sliderContainerRef"
-              class="slider-container"
-            >
-              <div class="slider-track">
-                <div
-                  class="slider-fill"
-                  :class="{ verified: sliderVerified }"
-                  :style="{ width: sliderProgress + '%' }"
-                />
-                <span
-                  class="slider-tip"
-                  :style="{ opacity: sliderVerified ? 0 : 1 - sliderProgress / 100 }"
-                >
-                  向右滑动验证
-                </span>
-                <span v-if="sliderVerified" class="slider-success-text">
-                  ✓ 验证成功
-                </span>
-                <div
-                  class="slider-btn"
-                  :class="{ verified: sliderVerified, dragging: sliderDragging }"
-                  :style="{ left: sliderLeft + 'px' }"
-                  @mousedown="onSliderMouseDown"
-                  @touchstart="onSliderMouseDown"
-                >
-                  <template v-if="sliderVerified">
-                    <span class="slider-icon check">✓</span>
-                  </template>
-                  <template v-else>
-                    <span class="slider-icon arrow">→</span>
-                  </template>
-                </div>
-              </div>
-            </div>
-          </el-form-item>
-
-          <!-- 记住密码 -->
           <el-form-item>
             <div class="login-options">
-              <el-checkbox v-model="loginForm.rememberMe">
-                记住账号
-              </el-checkbox>
+              <el-checkbox v-model="loginForm.rememberMe">记住账号</el-checkbox>
             </div>
           </el-form-item>
-
           <el-form-item>
             <el-button
               type="primary"
@@ -287,19 +119,14 @@ onMounted(() => {
               :loading="loading"
               @click="handleLogin"
             >
-              登 录
+              登录
             </el-button>
           </el-form-item>
         </el-form>
 
-        <!-- 注册入口 -->
         <div class="register-row">
           <span class="register-hint">还没有账号？</span>
           <a class="register-link" @click="goRegister">立即注册</a>
-        </div>
-
-        <div class="login-footer">
-          <span class="login-hint">演示账号：admin / doctor / patient</span>
         </div>
       </div>
     </div>
@@ -308,39 +135,28 @@ onMounted(() => {
 
 <style scoped>
 .home-page {
-  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  overflow: hidden;
   background: url('/images/home-bg.jpg') no-repeat center center / cover;
 }
 
-/* 内容容器 */
 .home-container {
-  position: relative;
-  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 60px;
   width: min(1100px, calc(100% - 80px));
-  max-width: 1200px;
   padding: 40px;
 }
 
-/* ========== 左侧：平台品牌区 ========== */
 .home-branding {
   flex: 1;
   color: #ffffff;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0;
   padding-left: 28px;
   border-left: 4px solid #4facfe;
-  box-shadow: -8px 0 24px rgb(79 172 254 / 25%);
+  text-shadow: 0 3px 16px rgb(0 0 0 / 40%);
 }
 
 .home-title {
@@ -349,35 +165,22 @@ onMounted(() => {
   font-weight: 700;
   letter-spacing: 0.06em;
   line-height: 1.15;
-  color: #ffffff;
-  text-shadow:
-    0 2px 4px rgb(0 0 0 / 50%),
-    0 4px 12px rgb(0 0 0 / 40%),
-    0 8px 24px rgb(0 0 0 / 30%);
 }
 
 .home-subtitle {
   margin: 0;
   font-size: clamp(16px, 1.6vw, 20px);
-  font-weight: 400;
-  color: rgb(255 255 255 / 90%);
-  letter-spacing: 0.1em;
-  line-height: 1.6;
-  text-shadow:
-    0 1px 3px rgb(0 0 0 / 40%),
-    0 2px 8px rgb(0 0 0 / 25%);
+  letter-spacing: 0.08em;
 }
 
-/* ========== 右侧：登录卡片 ========== */
 .home-login-card {
   width: 380px;
   padding: 40px 36px;
   border-radius: 16px;
-  background: rgb(255 255 255 / 35%);
-  border: 1px solid rgb(255 255 255 / 45%);
+  background: rgb(255 255 255 / 70%);
+  border: 1px solid rgb(255 255 255 / 60%);
   box-shadow: 0 20px 60px rgb(0 0 0 / 18%);
   backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
 }
 
 .login-title {
@@ -388,6 +191,12 @@ onMounted(() => {
   text-align: center;
 }
 
+.login-options {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+}
+
 .login-btn {
   width: 100%;
   height: 44px;
@@ -396,193 +205,12 @@ onMounted(() => {
   border-radius: 8px;
 }
 
-.login-footer {
-  margin-top: 16px;
-  text-align: center;
-}
-
-.login-hint {
-  font-size: 12px;
-  color: rgb(0 0 0 / 45%);
-}
-
-/* ========== 记住账号 ========== */
-.login-options {
-  display: flex;
-  justify-content: flex-end;
-  width: 100%;
-}
-
-/* ========== 滑块验证 ========== */
-.slider-container {
-  position: relative;
-  width: 100%;
-  user-select: none;
-}
-
-.slider-track {
-  position: relative;
-  height: 42px;
-  background: rgb(255 255 255 / 50%);
-  border: 1px solid rgb(255 255 255 / 60%);
-  border-radius: 8px;
-  overflow: hidden;
-  transition: border-color 0.3s;
-}
-
-.slider-track:has(.slider-btn.verified) {
-  border-color: #67c23a;
-}
-
-.slider-fill {
-  position: absolute;
-  top: 0;
-  left: 0;
-  height: 100%;
-  background: linear-gradient(90deg, rgb(74 144 217 / 25%) 0%, rgb(74 144 217 / 45%) 100%);
-  pointer-events: none;
-  transition: background 0.4s;
-}
-
-.slider-fill.verified {
-  background: linear-gradient(90deg, #85ce61 0%, #67c23a 50%, #5daf34 100%);
-  animation: slider-verified-glow 2s ease-in-out infinite;
-}
-
-@keyframes slider-verified-glow {
-  0%,
-  100% {
-    filter: brightness(1);
-  }
-  50% {
-    filter: brightness(1.08);
-  }
-}
-
-.slider-tip {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 13px;
-  color: rgb(0 0 0 / 55%);
-  pointer-events: none;
-  transition: opacity 0.25s ease;
-  white-space: nowrap;
-  letter-spacing: 0.05em;
-}
-
-.slider-btn {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 38px;
-  height: calc(100% - 4px);
-  background: #ffffff;
-  border: 1px solid rgb(255 255 255 / 60%);
-  border-radius: 6px;
-  cursor: grab;
-  box-shadow: 0 2px 6px rgb(0 0 0 / 10%);
-  transition: transform 0.15s ease, box-shadow 0.2s, background 0.3s,
-    border-color 0.3s;
-}
-
-.slider-btn:hover {
-  border-color: #4a90d9;
-  box-shadow: 0 2px 10px rgb(74 144 217 / 25%);
-}
-
-.slider-btn.dragging {
-  cursor: grabbing;
-  transform: scale(1.05);
-  box-shadow: 0 4px 14px rgb(0 0 0 / 15%);
-}
-
-.slider-btn.verified {
-  background: #ffffff;
-  border-color: #ffffff;
-  cursor: default;
-  box-shadow: 0 2px 8px rgb(93 175 52 / 40%);
-  animation: slider-btn-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-@keyframes slider-btn-pop {
-  0% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.15);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-.slider-icon {
-  font-size: 16px;
-  font-weight: bold;
-  color: #909399;
-  transition: color 0.2s;
-}
-
-.slider-btn.verified .slider-icon.check {
-  color: #67c23a;
-  animation: check-mark 0.5s ease-out forwards;
-}
-
-@keyframes check-mark {
-  0% {
-    transform: scale(0) rotate(-45deg);
-    opacity: 0;
-  }
-  60% {
-    transform: scale(1.2) rotate(5deg);
-    opacity: 1;
-  }
-  100% {
-    transform: scale(1) rotate(0);
-    opacity: 1;
-  }
-}
-
-.slider-success-text {
-  position: absolute;
-  top: 50%;
-  left: 20px;
-  transform: translateY(-50%);
-  font-size: 13px;
-  color: #ffffff;
-  font-weight: 500;
-  pointer-events: none;
-  letter-spacing: 0.08em;
-  text-shadow: 0 1px 2px rgb(0 0 0 / 15%);
-  animation: success-fade-in 0.4s ease-out;
-  z-index: 2;
-}
-
-@keyframes success-fade-in {
-  0% {
-    opacity: 0;
-    transform: translateY(-50%) translateX(-10px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(-50%) translateX(0);
-  }
-}
-
-/* ========== 注册入口 ========== */
 .register-row {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   margin-top: 4px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid rgb(0 0 0 / 8%);
 }
 
 .register-hint {
@@ -597,12 +225,6 @@ onMounted(() => {
   font-weight: 500;
 }
 
-.register-link:hover {
-  color: #4a90d9;
-  text-decoration: underline;
-}
-
-/* ========== 响应式适配 ========== */
 @media (max-width: 900px) {
   .home-container {
     flex-direction: column;
@@ -612,15 +234,8 @@ onMounted(() => {
 
   .home-branding {
     text-align: center;
-  }
-
-  .home-description {
-    margin-left: auto;
-    margin-right: auto;
-  }
-
-  .home-features {
-    justify-content: center;
+    padding-left: 0;
+    border-left: none;
   }
 
   .home-login-card {

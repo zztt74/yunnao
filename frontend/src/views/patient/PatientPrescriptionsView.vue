@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, onActivated } from 'vue'
 import dayjs from 'dayjs'
 import { ElMessage } from 'element-plus'
+import { ApiResponseError } from '@/api/response'
 import { getMyPrescriptions } from '@/api/prescription'
 import type { PrescriptionResponse, PrescriptionStatus, PrescriptionRiskLevel } from '@/types/prescription'
 
 const loading = ref(false)
 const list = ref<PrescriptionResponse[]>([])
+const loadError = ref('')
+const loadErrorCode = ref<'AUTH' | 'FORBIDDEN' | 'SERVER' | 'NETWORK' | 'OTHER'>('OTHER')
 const showDetail = ref(false)
 const detailRecord = ref<PrescriptionResponse | null>(null)
 
@@ -18,15 +21,15 @@ const dateFilterActive = computed(
 )
 
 const statusMeta: Record<PrescriptionStatus, { label: string; bg: string; color: string; border: string }> = {
-  DRAFT: { label: '草稿', bg: '#f5f5f5', color: '#8e8e93', border: '#d9d9d9' },
+  DRAFT: { label: '待医生确认', bg: '#fff7e6', color: '#d48806', border: '#ffd591' },
   CONFIRMED: { label: '已开具', bg: '#e3f0ff', color: '#1a73e8', border: '#a8cfff' },
   VOIDED: { label: '已作废', bg: '#fff1f0', color: '#cf1322', border: '#ffa39e' },
 }
 
 const riskMeta: Record<PrescriptionRiskLevel, { label: string; bg: string; color: string; icon: string }> = {
   LOW: { label: '低风险', bg: '#f6ffed', color: '#389e0d', icon: '✓' },
-  MEDIUM: { label: '中风险', bg: '#fffbe6', color: '#d48806', icon: '⚠️' },
-  HIGH: { label: '高风险', bg: '#fff1f0', color: '#cf1322', icon: '🚨' },
+  MEDIUM: { label: '中风险', bg: '#fffbe6', color: '#d48806', icon: '⚠' },
+  HIGH: { label: '高风险', bg: '#fff1f0', color: '#cf1322', icon: '!' },
 }
 
 const frequencyMap: Record<string, string> = {
@@ -37,14 +40,41 @@ const frequencyMap: Record<string, string> = {
   QN: '每晚 1 次',
 }
 
+/** 安全姓名：处理空字符串/纯空白，避免 charAt(0) 触发渲染异常 */
+function safeName(value: string | null | undefined): string {
+  return (value ?? '').trim() || '医生'
+}
+
+function safeChar(value: string | null | undefined): string {
+  const s = safeName(value)
+  return s.charAt(0) || '医'
+}
+
+/** 空值/缺字段提示：用于卡片缺失关键字段时显示 */
+function fieldHint(value: string | null | undefined): string {
+  return (value ?? '').trim() ? '' : '信息待医生补充'
+}
+
 async function loadList() {
   loading.value = true
+  loadError.value = ''
+  loadErrorCode.value = 'OTHER'
   try {
+    // includeDraft=true 让 DRAFT 也进入列表，由前端用状态徽章显示「待医生确认」
     list.value = await getMyPrescriptions({
       fromDate: dateFrom.value || undefined,
       toDate: dateTo.value || undefined,
+      includeDraft: true,
     })
   } catch (e) {
+    const err = e as Error & { response?: { status?: number } }
+    loadError.value = err instanceof Error ? err.message : '加载处方失败'
+    const status = err?.response?.status
+    if (status === 401) loadErrorCode.value = 'AUTH'
+    else if (status === 403) loadErrorCode.value = 'FORBIDDEN'
+    else if (status && status >= 500) loadErrorCode.value = 'SERVER'
+    else if (!status) loadErrorCode.value = 'NETWORK'
+    else if (err instanceof ApiResponseError) loadErrorCode.value = 'SERVER'
     console.error('加载处方失败：', e)
     ElMessage.error('加载处方失败')
   } finally {
@@ -60,6 +90,9 @@ function clearDateFilter() {
 const totalItems = computed(() => {
   return list.value.reduce((sum, p) => sum + p.items.length, 0)
 })
+
+const confirmedList = computed(() => list.value.filter((p) => p.status === 'CONFIRMED'))
+const draftList = computed(() => list.value.filter((p) => p.status === 'DRAFT'))
 
 function viewDetail(r: PrescriptionResponse) {
   detailRecord.value = r
@@ -77,6 +110,12 @@ onMounted(() => {
   loadList()
 })
 
+// keep-alive 场景下重新进入页面时也重新拉取，
+// 确保医生端确认处方后患者端无需手动刷新。
+onActivated(() => {
+  loadList()
+})
+
 watch([dateFrom, dateTo], () => {
   loadList()
 })
@@ -87,11 +126,29 @@ watch([dateFrom, dateTo], () => {
     <Transition name="page-push" mode="out-in">
       <!-- ============ 列表 ============ -->
       <div v-if="!showDetail" key="list" class="pane pane-list">
-        <!-- 顶部概览 -->
-        <div v-if="list.length" class="overview-card">
+        <!-- 加载失败时的可读错误与重试入口 -->
+        <div v-if="loadError && !loading" class="error-card">
+          <div class="error-title">
+            <template v-if="loadErrorCode === 'AUTH'">登录已失效</template>
+            <template v-else-if="loadErrorCode === 'FORBIDDEN'">没有查看处方的权限</template>
+            <template v-else-if="loadErrorCode === 'SERVER'">服务暂时不可用</template>
+            <template v-else-if="loadErrorCode === 'NETWORK'">网络异常，请检查连接</template>
+            <template v-else>加载失败</template>
+          </div>
+          <div class="error-desc">{{ loadError }}</div>
+          <div class="error-actions">
+            <button class="primary-btn" @click="loadList">重新加载</button>
+            <button v-if="loadErrorCode === 'AUTH'" class="ghost-btn" @click="$router.push('/')">
+              返回登录
+            </button>
+          </div>
+        </div>
+
+        <!-- 顶部概览（仅在有数据时展示，避免空态时数字看起来很奇怪） -->
+        <div v-else-if="confirmedList.length" class="overview-card">
           <div class="overview-item">
-            <div class="overview-num">{{ list.length }}</div>
-            <div class="overview-label">张处方</div>
+            <div class="overview-num">{{ confirmedList.length }}</div>
+            <div class="overview-label">张有效处方</div>
           </div>
           <div class="overview-divider"></div>
           <div class="overview-item">
@@ -100,15 +157,19 @@ watch([dateFrom, dateTo], () => {
           </div>
           <div class="overview-divider"></div>
           <div class="overview-item">
-            <div class="overview-num">
-              {{ list.filter((p) => p.status === 'CONFIRMED').length }}
-            </div>
+            <div class="overview-num">{{ confirmedList.length }}</div>
             <div class="overview-label">有效中</div>
           </div>
         </div>
 
+        <!-- 待医生确认的草稿提示，不计入概览数字 -->
+        <div v-if="draftList.length > 0 && !loading && !loadError" class="pending-banner">
+          <span class="pending-icon">…</span>
+          您有 {{ draftList.length }} 张处方待医生确认，确认后将自动出现在下方列表
+        </div>
+
         <!-- 日期范围筛选 -->
-        <div class="date-row">
+        <div v-if="!loadError" class="date-row">
           <span class="date-label">日期</span>
           <input
             v-model="dateFrom"
@@ -135,22 +196,22 @@ watch([dateFrom, dateTo], () => {
           </button>
         </div>
 
-        <div v-if="list.length === 0" class="empty-state">
+        <div v-if="list.length === 0 && !loading && !loadError" class="empty-state">
           <div class="empty-icon">💊</div>
           <div class="empty-text">暂无处方记录</div>
           <div class="empty-tip">医生开具并确认后将在此显示</div>
         </div>
 
-        <div v-else class="pres-list">
+        <div v-else-if="!loadError" class="pres-list">
           <div
             v-for="r in list"
             :key="r.id"
             class="pres-card"
-            :class="{ voided: r.status === 'VOIDED' }"
+            :class="{ voided: r.status === 'VOIDED', draft: r.status === 'DRAFT' }"
             @click="viewDetail(r)"
           >
             <div class="pres-card-top">
-              <div class="pres-dept">{{ r.departmentName }}</div>
+              <div class="pres-dept">{{ r.departmentName || '所属科室待确认' }}</div>
               <div
                 class="pres-status"
                 :style="{
@@ -162,24 +223,28 @@ watch([dateFrom, dateTo], () => {
                 {{ statusMeta[r.status].label }}
               </div>
             </div>
-            <div class="pres-diagnosis">诊断：{{ r.diagnosis }}</div>
-            <div class="pres-drugs">
+            <div class="pres-diagnosis">诊断：{{ r.diagnosis || '待医生补充诊断' }}</div>
+            <div v-if="r.status === 'CONFIRMED' || r.status === 'VOIDED'" class="pres-drugs">
               <div
                 v-for="item in r.items.slice(0, 3)"
                 :key="item.id"
                 class="drug-tag"
               >
-                {{ item.drugName }}
-                <span class="drug-spec">({{ item.strength }})</span>
+                {{ item.drugName || '药品' }}
+                <span class="drug-spec">({{ item.strength || '--' }})</span>
               </div>
               <div v-if="r.items.length > 3" class="drug-more">
                 等 {{ r.items.length }} 种药品
               </div>
+              <div v-if="r.items.length === 0" class="drug-more">药品明细待医生补充</div>
+            </div>
+            <div v-else class="pres-draft-tip">
+              医生正在为您准备处方，确认后您将收到提醒
             </div>
             <div class="pres-card-bottom">
               <div class="pres-doctor">
-                <span class="doctor-avatar">{{ r.doctorName.charAt(0) }}</span>
-                <span class="doctor-name">{{ r.doctorName }} 医生</span>
+                <span class="doctor-avatar">{{ safeChar(r.doctorName) }}</span>
+                <span class="doctor-name">{{ safeName(r.doctorName) }}</span>
               </div>
               <div class="pres-time">
                 {{ dayjs(r.confirmedAt || r.createdAt).format('YYYY-MM-DD') }}
@@ -196,6 +261,9 @@ watch([dateFrom, dateTo], () => {
                 {{ riskMeta[r.aiReview.riskLevel].icon }}
                 AI 审核：{{ riskMeta[r.aiReview.riskLevel].label }}
               </span>
+            </div>
+            <div v-if="fieldHint(r.departmentName) || fieldHint(r.diagnosis)" class="pres-field-hint">
+              部分信息待医生补充
             </div>
           </div>
         </div>
@@ -214,31 +282,37 @@ watch([dateFrom, dateTo], () => {
             <!-- 顶部状态卡 -->
             <div
               class="status-card"
-              :class="{ voided: detailRecord.status === 'VOIDED' }"
+              :class="{ voided: detailRecord.status === 'VOIDED', draft: detailRecord.status === 'DRAFT' }"
             >
               <div class="status-row">
                 <div class="status-text">{{ statusMeta[detailRecord.status].label }}</div>
-                <div class="status-doctor">{{ detailRecord.doctorName }} 医生</div>
+                <div class="status-doctor">{{ safeName(detailRecord.doctorName) }} 医生</div>
               </div>
               <div class="status-meta">
-                {{ detailRecord.departmentName }} ·
+                {{ detailRecord.departmentName || '所属科室待确认' }} ·
                 {{ dayjs(detailRecord.confirmedAt || detailRecord.createdAt).format('YYYY-MM-DD HH:mm') }}
               </div>
               <div v-if="detailRecord.status === 'VOIDED' && detailRecord.voidedReason" class="voided-reason">
                 作废原因：{{ detailRecord.voidedReason }}
+              </div>
+              <div v-if="detailRecord.status === 'DRAFT'" class="voided-reason">
+                处方正在由医生准备中，确认后将自动推送给您
               </div>
             </div>
 
             <!-- 诊断 -->
             <div class="detail-section">
               <div class="section-label">临床诊断</div>
-              <div class="section-text">{{ detailRecord.diagnosis }}</div>
+              <div class="section-text">{{ detailRecord.diagnosis || '待医生补充诊断' }}</div>
             </div>
 
             <!-- 药品列表 -->
             <div class="detail-section">
               <div class="section-header">
                 <div class="section-title">药品明细（{{ detailRecord.items.length }}）</div>
+              </div>
+              <div v-if="detailRecord.items.length === 0" class="empty-text-mini">
+                药品明细待医生补充
               </div>
               <div
                 v-for="(item, idx) in detailRecord.items"
@@ -249,29 +323,29 @@ watch([dateFrom, dateTo], () => {
                   <div class="drug-index">{{ idx + 1 }}</div>
                   <div class="drug-item-info">
                     <div class="drug-item-name">
-                      {{ item.drugName }}
-                      <span class="drug-item-spec">{{ item.strength }}</span>
+                      {{ item.drugName || '药品' }}
+                      <span class="drug-item-spec">{{ item.strength || '--' }}</span>
                     </div>
                   </div>
                 </div>
                 <div class="drug-item-grid">
                   <div class="drug-field">
                     <span class="field-label">用法</span>
-                    <span class="field-value">{{ item.usage }}</span>
+                    <span class="field-value">{{ item.usage || '按医嘱' }}</span>
                   </div>
                   <div class="drug-field">
                     <span class="field-label">剂量</span>
-                    <span class="field-value">{{ item.dosage }}</span>
+                    <span class="field-value">{{ item.dosage || '--' }}</span>
                   </div>
                   <div class="drug-field">
                     <span class="field-label">频次</span>
                     <span class="field-value">
-                      {{ frequencyMap[item.frequency] || item.frequency }}
+                      {{ frequencyMap[item.frequency] || item.frequency || '--' }}
                     </span>
                   </div>
                   <div class="drug-field">
                     <span class="field-label">疗程</span>
-                    <span class="field-value">{{ item.duration }}</span>
+                    <span class="field-value">{{ item.duration || '按医嘱' }}</span>
                   </div>
                 </div>
                 <div v-if="item.remark" class="drug-remark">
@@ -303,7 +377,7 @@ watch([dateFrom, dateTo], () => {
                 风险等级：{{ riskMeta[detailRecord.aiReview.riskLevel].label }}
               </div>
               <div v-if="detailRecord.aiReview.warnings.length" class="ai-warnings">
-                <div class="warnings-title">⚠️ 提示</div>
+                <div class="warnings-title">提示</div>
                 <ul class="warnings-list">
                   <li
                     v-for="(w, i) in detailRecord.aiReview.warnings"
@@ -314,16 +388,19 @@ watch([dateFrom, dateTo], () => {
                 </ul>
               </div>
               <div v-if="detailRecord.aiReview.advice" class="ai-advice">
-                <div class="advice-title">💡 建议</div>
+                <div class="advice-title">建议</div>
                 <div class="advice-text">{{ detailRecord.aiReview.advice }}</div>
               </div>
               <div class="ai-tip">AI 审核仅供参考，最终以医生确认结果为准</div>
             </div>
 
             <div class="detail-footer">
-              <div>本处方由 {{ detailRecord.doctorName }} 医生开具</div>
+              <div>本处方由 {{ safeName(detailRecord.doctorName) }} 医生开具</div>
               <div v-if="detailRecord.confirmedAt">
                 确认时间：{{ dayjs(detailRecord.confirmedAt).format('YYYY-MM-DD HH:mm') }}
+              </div>
+              <div v-else-if="detailRecord.status === 'DRAFT'">
+                等待医生确认时间
               </div>
             </div>
           </div>

@@ -72,8 +72,12 @@ public class AuthService {
         }
 
         // 登录成功，重置失败计数
-        resetFailedLogin(user);
+        user.setFailedLoginAttempts(0);
         loginRateLimiter.reset(clientIp, request.username());
+
+        // 记录最近登录时间（B-HW-04）
+        user.setLastLoginAt(LocalDateTime.now());
+        userAccountRepository.save(user);
 
         // 生成 Token
         AuthPrincipal principal = buildPrincipal(user);
@@ -168,16 +172,6 @@ public class AuthService {
         }
 
         userAccountRepository.save(user);
-    }
-
-    /**
-     * 重置登录失败计数
-     */
-    private void resetFailedLogin(UserAccount user) {
-        if (user.getFailedLoginAttempts() > 0) {
-            user.setFailedLoginAttempts(0);
-            userAccountRepository.save(user);
-        }
     }
 
     /**

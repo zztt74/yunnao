@@ -39,7 +39,7 @@ const adminMenus: MenuItem[] = [
   { path: '/admin/users', label: '用户管理' },
   { path: '/admin/departments', label: '科室管理' },
   { path: '/admin/doctors', label: '医生管理' },
-  { path: '/admin/patients', label: '患者查询' },
+  { path: '/admin/patients', label: '患者管理' },
   { path: '/admin/schedules', label: '排班管理' },
   { path: '/admin/appointments', label: '挂号管理' },
   { path: '/admin/triage', label: '分诊记录' },
@@ -48,6 +48,7 @@ const adminMenus: MenuItem[] = [
   { path: '/admin/logs/login', label: '登录日志' },
   { path: '/admin/logs/operation', label: '操作日志' },
   { path: '/admin/logs/ai-invocation', label: 'AI 调用记录' },
+  { path: '/admin/change-password', label: '修改密码' },
 ]
 
 const menus = computed<MenuItem[]>(() => {

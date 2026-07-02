@@ -42,6 +42,7 @@ import AdminStatisticsView from '@/views/admin/AdminStatisticsView.vue'
 import AdminLoginLogsView from '@/views/admin/AdminLoginLogsView.vue'
 import AdminOperationLogsView from '@/views/admin/AdminOperationLogsView.vue'
 import AdminAiLogsView from '@/views/admin/AdminAiLogsView.vue'
+import AdminChangePasswordView from '@/views/admin/AdminChangePasswordView.vue'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -240,7 +241,7 @@ const router = createRouter({
       path: '/admin/patients',
       name: 'admin-patients',
       component: AdminPatientsView,
-      meta: { requiresAuth: true, roles: ['ADMIN'], title: '患者查询' },
+      meta: { requiresAuth: true, roles: ['ADMIN'], title: '患者管理' },
     },
     {
       path: '/admin/schedules',
@@ -289,6 +290,12 @@ const router = createRouter({
       name: 'admin-logs-ai',
       component: AdminAiLogsView,
       meta: { requiresAuth: true, roles: ['ADMIN'], title: 'AI 调用记录' },
+    },
+    {
+      path: '/admin/change-password',
+      name: 'admin-change-password',
+      component: AdminChangePasswordView,
+      meta: { requiresAuth: true, roles: ['ADMIN'], title: '修改密码' },
     },
     {
       path: '/:pathMatch(.*)*',

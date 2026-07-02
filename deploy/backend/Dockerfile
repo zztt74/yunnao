@@ -12,6 +12,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --uid 10001 cloudbrain
 COPY --from=build /workspace/backend/target/cloud-brain-backend-0.0.1-SNAPSHOT.jar app.jar
+RUN mkdir -p logs && chown -R cloudbrain:cloudbrain /app
 USER cloudbrain
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

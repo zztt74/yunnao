@@ -11,9 +11,10 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getEncounterById, waitForExam, resumeEncounter, completeEncounter } from '@/api/encounter'
-import { mockPatientSummaries, type MockPatientSummary } from '@/api/mock/doctor-mock'
+import { getPatientDetail } from '@/api/patient'
 import { useEncounterStore } from '@/stores/encounter'
 import type { EncounterResponse, EncounterStatus } from '@/types/encounter'
+import type { PatientDetailResponse } from '@/types/patient'
 
 const route = useRoute()
 const router = useRouter()
@@ -24,13 +25,11 @@ const loadError = ref('')
 const acting = ref(false)
 
 const encounter = ref<EncounterResponse | null>(null)
+const patientDetail = ref<PatientDetailResponse | null>(null)
 
 const encounterId = computed(() => Number(route.params.id))
 
-const patientSummary = computed<MockPatientSummary | undefined>(() => {
-  if (!encounter.value) return undefined
-  return mockPatientSummaries[encounter.value.patientId]
-})
+const patientSummary = computed(() => patientDetail.value)
 
 const statusText = computed(() => {
   if (!encounter.value) return ''
@@ -125,11 +124,21 @@ async function loadEncounter() {
     const enc = await getEncounterById(encounterId.value)
     encounter.value = enc
     encounterStore.setActiveEncounter(enc)
+    await loadPatientDetail(enc.patientId)
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : '加载就诊失败'
     console.error('[DoctorEncounter] 加载失败：', e)
   } finally {
     loading.value = false
+  }
+}
+
+async function loadPatientDetail(patientId: number) {
+  try {
+    patientDetail.value = await getPatientDetail(patientId)
+  } catch (e) {
+    patientDetail.value = null
+    console.warn('[DoctorEncounter] patient detail unavailable', patientId, e)
   }
 }
 

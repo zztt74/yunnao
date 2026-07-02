@@ -30,6 +30,18 @@ public class UserAccount {
     @Column(nullable = false, unique = true, length = 64)
     private String username;
 
+    @Column(name = "real_name", length = 64)
+    private String realName;
+
+    @Column(length = 20)
+    private String phone;
+
+    @Column(length = 128)
+    private String email;
+
+    @Column(name = "last_login_at")
+    private LocalDateTime lastLoginAt;
+
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
 

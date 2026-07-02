@@ -2,12 +2,15 @@ package com.neusoft.cloudbrain.device.service;
 
 import com.neusoft.cloudbrain.auth.dto.AuthPrincipal;
 import com.neusoft.cloudbrain.auth.security.SecurityUtils;
+import com.neusoft.cloudbrain.department.repository.DepartmentRepository;
+import com.neusoft.cloudbrain.device.dto.DeviceCreateRequest;
 import com.neusoft.cloudbrain.device.dto.DeviceEndUsageRequest;
 import com.neusoft.cloudbrain.device.dto.DeviceResponse;
 import com.neusoft.cloudbrain.device.dto.DeviceStartUsageRequest;
 import com.neusoft.cloudbrain.device.dto.DeviceStatusChangeRequest;
 import com.neusoft.cloudbrain.device.dto.DeviceStatusHistoryResponse;
 import com.neusoft.cloudbrain.device.dto.DeviceUsageResponse;
+import com.neusoft.cloudbrain.device.dto.DeviceUpdateRequest;
 import com.neusoft.cloudbrain.device.entity.Device;
 import com.neusoft.cloudbrain.device.entity.DeviceStatusHistory;
 import com.neusoft.cloudbrain.device.entity.DeviceUsage;
@@ -19,6 +22,7 @@ import com.neusoft.cloudbrain.encounter.entity.Encounter;
 import com.neusoft.cloudbrain.encounter.repository.EncounterRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -69,6 +73,7 @@ public class DeviceService {
     private final DeviceUsageRepository deviceUsageRepository;
     private final DeviceStatusHistoryRepository deviceStatusHistoryRepository;
     private final EncounterRepository encounterRepository;
+    private final DepartmentRepository departmentRepository;
 
     /**
      * 合法状态转换映射
@@ -136,6 +141,81 @@ public class DeviceService {
                                               Long departmentId, Pageable pageable) {
         return deviceRepository.searchDevices(keyword, status, type, departmentId, pageable)
                 .map(this::toDeviceResponse);
+    }
+
+    // ============================================================
+    // 设备档案：创建和更新
+    // ============================================================
+
+    /**
+     * 创建设备档案
+     *
+     * - code 必须唯一
+     * - 创建后 status 默认 AVAILABLE，不在此接口设置 status
+     */
+    @Transactional
+    public DeviceResponse createDevice(DeviceCreateRequest request) {
+        if (deviceRepository.existsByCode(request.code())) {
+            throw DeviceErrorCode.DEVICE_CODE_DUPLICATED.toException();
+        }
+        validateDepartment(request.departmentId());
+
+        LocalDateTime now = LocalDateTime.now();
+        Device device = Device.builder()
+                .code(request.code())
+                .name(request.name())
+                .type(request.type())
+                .departmentId(request.departmentId())
+                .status("AVAILABLE")
+                .location(request.location())
+                .manufacturer(request.manufacturer())
+                .model(request.model())
+                .serialNumber(request.serialNumber())
+                .notes(request.notes())
+                .purchaseDate(request.purchaseDate())
+                .warrantyUntil(request.warrantyUntil())
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
+        try {
+            device = deviceRepository.save(device);
+        } catch (DataIntegrityViolationException e) {
+            // 并发下 code 唯一约束兜底（existsByCode 预检查与 save 之间存在竞态）
+            throw DeviceErrorCode.DEVICE_CODE_DUPLICATED.toException();
+        }
+
+        log.info("创建设备档案: id={}, code={}, name={}", device.getId(), device.getCode(), device.getName());
+        return toDeviceResponse(device);
+    }
+
+    /**
+     * 更新设备档案基础信息
+     *
+     * - 只更新基础档案字段，不修改 status（状态变更走 changeDeviceStatus）
+     * - 不修改 code（业务唯一标识，避免破坏历史关联）
+     * - IN_USE 设备也可更新基础信息（不破坏占用状态）
+     */
+    @Transactional
+    public DeviceResponse updateDevice(Long id, DeviceUpdateRequest request) {
+        Device device = deviceRepository.findById(id)
+                .orElseThrow(DeviceErrorCode.DEVICE_NOT_FOUND::toException);
+        validateDepartment(request.departmentId());
+
+        device.setName(request.name());
+        device.setType(request.type());
+        device.setDepartmentId(request.departmentId());
+        device.setLocation(request.location());
+        device.setManufacturer(request.manufacturer());
+        device.setModel(request.model());
+        device.setSerialNumber(request.serialNumber());
+        device.setNotes(request.notes());
+        device.setPurchaseDate(request.purchaseDate());
+        device.setWarrantyUntil(request.warrantyUntil());
+        device.setUpdatedAt(LocalDateTime.now());
+        device = deviceRepository.save(device);
+
+        log.info("更新设备档案: id={}, code={}, name={}", device.getId(), device.getCode(), device.getName());
+        return toDeviceResponse(device);
     }
 
     // ============================================================
@@ -370,6 +450,15 @@ public class DeviceService {
     // ============================================================
     // 辅助方法
     // ============================================================
+
+    /**
+     * 校验科室存在性（departmentId 为空时跳过，允许设备暂不归属科室）
+     */
+    private void validateDepartment(Long departmentId) {
+        if (departmentId != null && !departmentRepository.existsById(departmentId)) {
+            throw DeviceErrorCode.DEVICE_DEPARTMENT_NOT_FOUND.toException();
+        }
+    }
 
     /**
      * 校验状态转换合法性

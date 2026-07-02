@@ -41,7 +41,8 @@ public class MockAIProvider implements AIProvider {
 
     @Override
     public String name() {
-        return "MOCK";
+        // B-HW-11：Mock provider 调用显示为 Mock，便于审计与真实 DeepSeek 区分。
+        return "Mock";
     }
 
     @Override

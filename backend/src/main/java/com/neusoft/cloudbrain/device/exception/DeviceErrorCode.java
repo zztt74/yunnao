@@ -21,6 +21,12 @@ public enum DeviceErrorCode {
     DEVICE_NOT_FOUND("设备不存在", 404),
     DEVICE_USAGE_NOT_FOUND("设备使用记录不存在", 404),
 
+    // 编码冲突 409
+    DEVICE_CODE_DUPLICATED("设备编码已存在", 409),
+
+    // 科室不存在 404
+    DEVICE_DEPARTMENT_NOT_FOUND("所选科室不存在", 404),
+
     // 状态冲突 409
     DEVICE_STATUS_CONFLICT("设备状态冲突，不允许该状态转换", 409),
     DEVICE_NOT_AVAILABLE("设备当前不可用", 409),

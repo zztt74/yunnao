@@ -15,9 +15,10 @@ import {
   startPatientEncounter,
   getEncounterByAppointmentId,
 } from '@/api/encounter'
-import { mockPatientSummaries, type MockPatientSummary } from '@/api/mock/doctor-mock'
+import { getPatientDetail } from '@/api/patient'
 import { useEncounterStore } from '@/stores/encounter'
 import type { AppointmentResponse } from '@/types/appointment'
+import type { PatientDetailResponse } from '@/types/patient'
 
 const router = useRouter()
 const route = useRoute()
@@ -27,14 +28,15 @@ const loading = ref(true)
 const loadError = ref('')
 const pendingList = ref<AppointmentResponse[]>([])
 const activeList = ref<AppointmentResponse[]>([])
+const patientDetails = ref<Record<number, PatientDetailResponse>>({})
 const startingId = ref<number | null>(null)
 const continuingId = ref<number | null>(null)
 
 const pendingCount = computed(() => pendingList.value.length)
 const activeCount = computed(() => activeList.value.length)
 
-function getPatientSummary(patientId: number): MockPatientSummary | undefined {
-  return mockPatientSummaries[patientId]
+function getPatientSummary(patientId: number): PatientDetailResponse | undefined {
+  return patientDetails.value[patientId]
 }
 
 function formatTime(iso: string): string {
@@ -70,6 +72,7 @@ async function loadQueue() {
     ])
     pendingList.value = pending
     activeList.value = active
+    await loadPatientDetails([...pending, ...active])
 
     // 来自首页「继续接诊」的跳转：自动定位并继续
     const apptIdQuery = route.query.appointmentId
@@ -86,6 +89,18 @@ async function loadQueue() {
   } finally {
     loading.value = false
   }
+}
+
+async function loadPatientDetails(appointments: AppointmentResponse[]) {
+  const patientIds = [...new Set(appointments.map((appt) => appt.patientId))]
+  await Promise.all(patientIds.map(async (patientId) => {
+    if (patientDetails.value[patientId]) return
+    try {
+      patientDetails.value[patientId] = await getPatientDetail(patientId)
+    } catch (e) {
+      console.warn('[DoctorQueue] patient detail unavailable', patientId, e)
+    }
+  }))
 }
 
 /** 开始接诊（BOOKED 挂号 → 创建 Encounter → 进入工作台） */

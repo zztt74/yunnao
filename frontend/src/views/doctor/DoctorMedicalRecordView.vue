@@ -21,7 +21,7 @@ import type { MedicalRecord, MedicalRecordStatus } from '@/types/medical-record'
 
 const route = useRoute()
 const encounterStore = useEncounterStore()
-const { activeEncounter, consultationNotes } = storeToRefs(encounterStore)
+const { activeEncounter, consultationNotes, consultationDialogue } = storeToRefs(encounterStore)
 
 const encounterId = computed(() => Number(route.params.id))
 
@@ -127,6 +127,7 @@ async function handleAiGenerate() {
       presentIllness: consultationNotes.value.presentIllness,
       pastHistory: consultationNotes.value.pastHistory,
       physicalExam: consultationNotes.value.physicalExam,
+      consultationTranscript: consultationDialogue.value?.trim() || undefined,
     })
     if (res.aiStatus === 'FAILED') {
       aiFailReason.value = res.aiFailureReason || 'AI 病历生成失败'
@@ -145,6 +146,8 @@ async function handleAiGenerate() {
       ElMessage.success('AI 已生成病历草稿，请核对后确认')
     }
   } catch (e) {
+    // 失败时保留医生已输入的内容，不丢失
+    console.error('[MedicalRecord] AI 生成失败：', e)
     ElMessage.error(e instanceof Error ? e.message : 'AI 生成请求失败')
   } finally {
     aiGenerating.value = false
@@ -288,6 +291,24 @@ watch(activeEncounter, (enc) => {
     </div>
 
     <template v-else>
+      <!-- F3: 问诊对话记录（F3 课程要求 - 作为 AI 病历生成上下文） -->
+      <div class="block dialogue-block">
+        <div class="block-title">
+          💬 问诊对话记录
+          <span class="block-hint">F3：录入医患对话原文，AI 生成病历时作为上下文</span>
+        </div>
+        <textarea
+          v-model="consultationDialogue"
+          class="form-textarea dialogue-textarea"
+          rows="5"
+          :disabled="isReadOnly"
+          placeholder="可粘贴或手动录入医患对话原文，例如：&#10;医生：您好，请问哪里不舒服？&#10;患者：我最近三天一直发烧，38度左右，还有点咳嗽。&#10;医生：有痰吗？什么颜色？&#10;……"
+        />
+        <div class="dialogue-tip">
+          留空时，AI 将仅基于主诉/现病史/既往史/体格检查等结构化字段生成病历。
+        </div>
+      </div>
+
       <!-- 病历表单 -->
       <div class="block" :class="{ readonly: isReadOnly }">
         <div class="form-group">
@@ -655,5 +676,42 @@ watch(activeEncounter, (enc) => {
   padding: 10px 14px;
   font-size: 14px;
   color: #67c23a;
+}
+
+/* F3: 问诊对话记录 */
+.dialogue-block {
+  background: linear-gradient(135deg, #f0f9ff 0%, #faf5ff 100%);
+  border: 1px dashed #b5d6ff;
+}
+
+.dialogue-block .block-title {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin-bottom: 10px;
+}
+
+.block-hint {
+  font-size: 12px;
+  font-weight: 400;
+  color: #8e8e93;
+}
+
+.dialogue-textarea {
+  min-height: 110px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.dialogue-tip {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #8e8e93;
+  line-height: 1.5;
 }
 </style>

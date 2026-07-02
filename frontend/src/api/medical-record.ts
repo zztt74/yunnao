@@ -1,131 +1,157 @@
+import type { EncounterResponse } from '@/types/encounter'
+import type { PageResponse } from '@/types/api'
 import type {
   MedicalRecord,
   MedicalRecordAiRequest,
   MedicalRecordAiResponse,
   MedicalRecordSaveRequest,
+  MedicalRecordStatus,
 } from '@/types/medical-record'
-import type { EncounterResponse } from '@/types/encounter'
-import { mockMedicalRecords } from '@/api/mock/medical-mock'
-import {
-  getEncounterMedicalRecord as mockGetEncMr,
-  generateMedicalRecordDraft as mockGenDraft,
-  saveMedicalRecord as mockSaveMr,
-  shouldSimulateAiFailure,
-} from '@/api/mock/doctor-mock'
+import { apiClient } from '@/api/client'
+import { parseApiResponse } from '@/api/response'
+import { getPatientInfo } from '@/api/patient'
 
-// MOCK：后端 /api/medical-records 接口未就绪，使用本地演示数据
-// 后端就绪后请删除本文件并替换为真实调用
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+interface BackendMedicalRecord {
+  id: number
+  encounterId: number
+  patientId: number
+  doctorId: number
+  content: string
+  source: string
+  status: MedicalRecordStatus
+  createdBy?: number | null
+  confirmedBy?: number | null
+  confirmedAt?: string | null
+  createdAt: string
+  updatedAt: string
 }
 
-/** 查询当前患者的病历列表（按时间倒序） */
+interface StructuredContent {
+  chiefComplaint?: string
+  presentIllness?: string
+  pastHistory?: string
+  physicalExam?: string
+  preliminaryDiagnosis?: string
+  treatmentAdvice?: string
+}
+
 export async function getMyMedicalRecords(params?: {
   fromDate?: string
   toDate?: string
 }): Promise<MedicalRecord[]> {
-  console.warn('[MOCK] /api/medical-records 后端未就绪，使用本地虚构演示数据')
-  await delay(400)
-  let list = [...mockMedicalRecords]
-  // 仅展示已 CONFIRMED 的（按设计文档 §14.4「只展示医生确认或审核后的正式结果」）
-  list = list.filter((r) => r.status === 'CONFIRMED')
+  const patient = await getPatientInfo()
+  const res = await apiClient.get(`/medical-records/patient/${patient.id}`)
+  let list = parseApiResponse<PageResponse<BackendMedicalRecord>>(res.data).items
+    .map((record) => mapMedicalRecord(record))
+    .filter((record) => record.status === 'CONFIRMED')
   if (params?.fromDate) {
-    list = list.filter((r) => r.encounterDate >= params.fromDate!)
+    list = list.filter((record) => record.encounterDate >= params.fromDate!)
   }
   if (params?.toDate) {
-    list = list.filter((r) => r.encounterDate <= params.toDate!)
+    list = list.filter((record) => record.encounterDate <= params.toDate!)
   }
-  return list.sort(
-    (a, b) => new Date(b.encounterDate).getTime() - new Date(a.encounterDate).getTime(),
-  )
+  return list.sort((a, b) => new Date(b.encounterDate).getTime() - new Date(a.encounterDate).getTime())
 }
 
-/** 获取病历详情 */
 export async function getMedicalRecordById(id: number): Promise<MedicalRecord> {
-  console.warn('[MOCK] /api/medical-records/{id} 后端未就绪，使用本地虚构演示数据')
-  await delay(300)
-  const found = mockMedicalRecords.find((r) => r.id === id)
-  if (!found) {
-    throw new Error('病历不存在')
-  }
-  return found
+  const res = await apiClient.get(`/medical-records/${id}`)
+  return mapMedicalRecord(parseApiResponse<BackendMedicalRecord>(res.data))
 }
 
-// ===== 医生端：病历生成与编辑 =====
-
-/** 查询某就诊的病历（医生端，含草稿） */
 export async function getEncounterMedicalRecord(encounterId: number): Promise<MedicalRecord | null> {
-  console.warn('[MOCK] /api/medical-records/encounter/{id} 后端未就绪，使用本地虚构演示数据')
-  await delay(300)
-  return mockGetEncMr(encounterId) ?? null
+  const res = await apiClient.get(`/medical-records/encounter/${encounterId}`)
+  const records = parseApiResponse<BackendMedicalRecord[]>(res.data)
+  return records.length > 0 ? mapMedicalRecord(records[0]) : null
 }
 
-/**
- * AI 生成病历草稿（§11.4）
- * - AI 只能生成草稿，不写入正式病历（§11.6）
- * - 返回结构化草稿，前端回填可编辑表单（§11.3）
- * - AI 失败时返回降级标记，医生可手工填写（§11.5、§14）
- */
 export async function generateMedicalRecordDraft(
   payload: MedicalRecordAiRequest,
 ): Promise<MedicalRecordAiResponse> {
-  console.warn('[MOCK] /api/medical-records/ai-generate 后端未就绪，使用本地虚构演示数据')
-  await delay(1500)
-  if (shouldSimulateAiFailure()) {
-    sessionStorage.removeItem('cloud-brain.mock-ai-fail')
-    return {
-      encounterId: payload.encounterId,
-      chiefComplaint: payload.chiefComplaint,
-      presentIllness: '',
-      pastHistory: '',
-      physicalExam: '',
-      preliminaryDiagnosis: '',
-      treatmentAdvice: '',
-      aiStatus: 'FAILED',
-      aiFailureReason: 'AI_GENERATION_FAILED：AI 病历生成失败，请手工填写病历。',
-    }
-  }
-  return mockGenDraft(payload.encounterId, {
+  const res = await apiClient.post('/medical-records/ai-generate', {
+    encounterId: payload.encounterId,
     chiefComplaint: payload.chiefComplaint,
     presentIllness: payload.presentIllness,
     pastHistory: payload.pastHistory,
-    physicalExam: payload.physicalExam,
+    physicalExamination: payload.physicalExam,
+    preliminaryDiagnoses: payload.diagnoses,
+    consultationTranscript: payload.consultationTranscript,
   })
+  const record = parseApiResponse<BackendMedicalRecord>(res.data)
+  const content = parseContent(record.content)
+  return {
+    encounterId: record.encounterId,
+    chiefComplaint: content.chiefComplaint || payload.chiefComplaint,
+    presentIllness: content.presentIllness || payload.presentIllness || '',
+    pastHistory: content.pastHistory || payload.pastHistory || '',
+    physicalExam: content.physicalExam || payload.physicalExam || '',
+    preliminaryDiagnosis: content.preliminaryDiagnosis || payload.diagnoses?.join('、') || '',
+    treatmentAdvice: content.treatmentAdvice || '',
+    aiStatus: 'SUCCESS',
+  }
 }
 
-/** 医生保存病历草稿（DRAFT/AI_GENERATED，§11.3） */
 export async function saveMedicalRecord(
   encounter: EncounterResponse,
   payload: MedicalRecordSaveRequest,
 ): Promise<MedicalRecord> {
-  console.warn('[MOCK] /api/medical-records POST（草稿）后端未就绪，使用本地虚构演示数据')
-  await delay(400)
-  return mockSaveMr(encounter.id, encounter, {
-    chiefComplaint: payload.chiefComplaint,
-    presentIllness: payload.presentIllness,
-    pastHistory: payload.pastHistory,
-    physicalExam: payload.physicalExam,
-    preliminaryDiagnosis: payload.preliminaryDiagnosis,
-    treatmentAdvice: payload.treatmentAdvice,
-    status: payload.status,
-  })
+  const existing = await getEncounterMedicalRecord(encounter.id)
+  const content = serializeContent(payload)
+  const res = existing
+    ? await apiClient.put(`/medical-records/${existing.id}`, { content })
+    : await apiClient.post('/medical-records', { encounterId: encounter.id, content })
+  return mapMedicalRecord(parseApiResponse<BackendMedicalRecord>(res.data), encounter)
 }
 
-/** 医生确认病历（DRAFT/AI_GENERATED → CONFIRMED，§11.6：正式病历必须医生确认） */
 export async function confirmMedicalRecord(
   encounter: EncounterResponse,
   payload: MedicalRecordSaveRequest,
 ): Promise<MedicalRecord> {
-  console.warn('[MOCK] /api/medical-records/{id}/confirm 后端未就绪，使用本地虚构演示数据')
-  await delay(400)
-  return mockSaveMr(encounter.id, encounter, {
+  const saved = await saveMedicalRecord(encounter, { ...payload, status: 'DRAFT' })
+  const res = await apiClient.post(`/medical-records/${saved.id}/confirm`)
+  return mapMedicalRecord(parseApiResponse<BackendMedicalRecord>(res.data), encounter)
+}
+
+function mapMedicalRecord(record: BackendMedicalRecord, encounter?: EncounterResponse): MedicalRecord {
+  const content = parseContent(record.content)
+  return {
+    id: record.id,
+    encounterId: record.encounterId,
+    patientId: record.patientId,
+    doctorId: record.doctorId,
+    doctorName: encounter?.doctorName ?? '',
+    departmentName: encounter?.departmentName ?? '',
+    chiefComplaint: content.chiefComplaint || record.content,
+    presentIllness: content.presentIllness || '',
+    pastHistory: content.pastHistory || '',
+    physicalExam: content.physicalExam || '',
+    preliminaryDiagnosis: content.preliminaryDiagnosis || '',
+    treatmentAdvice: content.treatmentAdvice || '',
+    status: record.status,
+    diagnoses: [],
+    encounterDate: record.createdAt,
+    confirmedAt: record.confirmedAt ?? null,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  }
+}
+
+function serializeContent(payload: MedicalRecordSaveRequest): string {
+  return JSON.stringify({
     chiefComplaint: payload.chiefComplaint,
     presentIllness: payload.presentIllness,
-    pastHistory: payload.pastHistory,
-    physicalExam: payload.physicalExam,
-    preliminaryDiagnosis: payload.preliminaryDiagnosis,
-    treatmentAdvice: payload.treatmentAdvice,
-    status: 'CONFIRMED',
+    pastHistory: payload.pastHistory ?? '',
+    physicalExam: payload.physicalExam ?? '',
+    preliminaryDiagnosis: payload.preliminaryDiagnosis ?? '',
+    treatmentAdvice: payload.treatmentAdvice ?? '',
   })
+}
+
+function parseContent(content: string): StructuredContent {
+  try {
+    const parsed = JSON.parse(content) as StructuredContent
+    if (parsed && typeof parsed === 'object') return parsed
+  } catch {
+    // Existing records may be plain text from earlier contracts.
+  }
+  return { chiefComplaint: content }
 }

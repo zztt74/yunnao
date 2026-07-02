@@ -1,6 +1,8 @@
 package com.neusoft.cloudbrain.audit.repository;
 
 import com.neusoft.cloudbrain.audit.entity.AIInvocation;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -44,4 +46,30 @@ public interface AIInvocationRepository extends JpaRepository<AIInvocation, Long
             "GROUP BY i.capability")
     java.util.List<Object[]> getAICallStatisticsByCapability(@Param("start") LocalDateTime start,
                                                               @Param("end") LocalDateTime end);
+
+    /**
+     * 管理端 AI 调用日志分页查询（多条件）
+     *
+     * @param capability  能力筛选（可空）
+     * @param success     成功筛选（可空）：true=仅 SUCCESS，false=非 SUCCESS（含 FAILED/PENDING）
+     * @param businessType 业务类型筛选（可空）
+     * @param startDate   开始时间（可空，闭区间，按 startedAt）
+     * @param endDate     结束时间（可空，开区间，按 startedAt）
+     */
+    @Query("SELECT i FROM AIInvocation i WHERE " +
+            "(:capability IS NULL OR i.capability = :capability) " +
+            "AND (:businessType IS NULL OR i.businessType = :businessType) " +
+            "AND (:success IS NULL " +
+            "     OR (:success = true AND i.status = 'SUCCESS') " +
+            "     OR (:success = false AND i.status <> 'SUCCESS')) " +
+            "AND (:startDate IS NULL OR i.startedAt >= :startDate) " +
+            "AND (:endDate IS NULL OR i.startedAt < :endDate) " +
+            "ORDER BY i.startedAt DESC")
+    Page<AIInvocation> searchInvocations(
+            @Param("capability") String capability,
+            @Param("businessType") String businessType,
+            @Param("success") Boolean success,
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate,
+            Pageable pageable);
 }
