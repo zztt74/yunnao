@@ -219,7 +219,7 @@ const primaryPatient = await registerPatient('flow_patient', suffix)
 const otherPatient = await registerPatient('flow_other_patient', `${suffix}9`)
 const schedule = await ensureSchedule(admin.token, doctor, suffix)
 
-const triage = await request(`${backendBaseUrl}/api/triage/analyze`, {
+const triage = await request(`${backendBaseUrl}/api/triage/consult`, {
   method: 'POST',
   headers: authHeaders(primaryPatient.token),
   body: JSON.stringify({
@@ -230,7 +230,7 @@ const triage = await request(`${backendBaseUrl}/api/triage/analyze`, {
   }),
 })
 const triageConversationId = randomUUID()
-const triageFollowUp = await request(`${backendBaseUrl}/api/triage/analyze`, {
+const triageFollowUp = await request(`${backendBaseUrl}/api/triage/consult`, {
   method: 'POST',
   headers: authHeaders(primaryPatient.token),
   body: JSON.stringify({
@@ -251,6 +251,12 @@ expect(triageFollowUp.data.conversationId === triageConversationId,
   'triage follow-up should echo conversationId')
 expect(triageFollowUp.data.round === 2,
   'triage follow-up should echo round=2')
+
+const recommendedDoctors = await request(`${backendBaseUrl}/api/triage/recommended-doctors?departmentId=${triage.data.mappedDepartmentId}&limit=3`, {
+  headers: authHeaders(primaryPatient.token),
+})
+expect(Array.isArray(recommendedDoctors.data), 'recommended doctors should return an array')
+expect(recommendedDoctors.data.length > 0, 'recommended doctors should include real schedulable doctors')
 
 const appointment = await request(`${backendBaseUrl}/api/appointments`, {
   method: 'POST',
@@ -399,6 +405,7 @@ const aiMedicalRecord = await optionalStep('medical-record-ai-generate', () => r
     physicalExamination: '咽部充血，双肺呼吸音清。',
     preliminaryDiagnoses: ['急性上呼吸道感染'],
     treatmentSuggestion: '对症治疗，注意休息，必要时复诊。',
+    consultationTranscript: '医生：哪里不舒服？患者：发热咳嗽 2 天，咽痛，无呼吸困难。',
   }),
 }))
 
@@ -438,6 +445,14 @@ const prescription = await request(`${backendBaseUrl}/api/prescriptions`, {
     ],
   }),
 })
+
+const prescriptionCheck = await request(`${backendBaseUrl}/api/prescription/check`, {
+  method: 'POST',
+  headers: authHeaders(doctorLogin.accessToken),
+  body: JSON.stringify({ prescriptionId: prescription.data.id }),
+})
+expect(prescriptionCheck.data.prescriptionId === prescription.data.id,
+  'prescription check should return requested prescription id')
 
 const confirmedPrescription = await request(`${backendBaseUrl}/api/prescriptions/${prescription.data.id}/confirm`, {
   method: 'POST',

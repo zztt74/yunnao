@@ -256,9 +256,12 @@ describe('prescription API', () => {
   })
 
   describe('aiReviewPrescription', () => {
-    it('returns the same prescription (placeholder)', async () => {
+    it('calls the course-compatible check endpoint then refreshes detail', async () => {
+      mock.post.mockResolvedValueOnce(successEnvelope({ prescriptionId: 300 }))
       mock.get.mockResolvedValueOnce(successEnvelope(backendPrescriptionFixture()))
       const result = await aiReviewPrescription(300, '青霉素')
+      expect(mock.post).toHaveBeenCalledWith('/prescription/check', { prescriptionId: 300 })
+      expect(mock.get).toHaveBeenCalledWith('/prescriptions/300')
       expect(result.id).toBe(300)
     })
   })

@@ -74,6 +74,7 @@ export async function generateMedicalRecordDraft(
     pastHistory: payload.pastHistory,
     physicalExamination: payload.physicalExam,
     preliminaryDiagnoses: payload.diagnoses,
+    consultationTranscript: payload.consultationTranscript,
   })
   const record = parseApiResponse<BackendMedicalRecord>(res.data)
   const content = parseContent(record.content)

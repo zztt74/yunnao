@@ -138,7 +138,7 @@ export async function consultTriage(
   if (payload.conversationId) body.conversationId = payload.conversationId
   if (history?.length) body.history = history
   if (payload.round) body.round = payload.round
-  const res = await apiClient.post('/triage/analyze', body)
+  const res = await apiClient.post('/triage/consult', body)
   return mapAnalyzeResponse(parseApiResponse<TriageAnalyzeResponse>(res.data))
 }
 

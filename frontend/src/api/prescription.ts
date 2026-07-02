@@ -134,6 +134,7 @@ export async function aiReviewPrescription(
   prescriptionId: number,
   _patientAllergies: string,
 ): Promise<PrescriptionResponse> {
+  await apiClient.post('/prescription/check', { prescriptionId })
   return getPrescriptionById(prescriptionId)
 }
 

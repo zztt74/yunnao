@@ -22,7 +22,7 @@ describe('triage API', () => {
       expect(result.reason).toBe('存在急诊风险')
       expect(result.emergencyAdvice).toBe('症状存在急诊风险，请优先急诊处理。')
       expect(result.followUpQuestion).toBeUndefined()
-      expect(mock.post).toHaveBeenCalledWith('/triage/analyze', {
+      expect(mock.post).toHaveBeenCalledWith('/triage/consult', {
         patientId: 42,
         symptoms: '胸痛',
         duration: '30分钟',
@@ -108,7 +108,7 @@ describe('triage API', () => {
       mock.get.mockResolvedValueOnce(successEnvelope(backendPatientFixture()))
       mock.post.mockResolvedValueOnce(successEnvelope(backendTriageAnalyzeFixture()))
       await consultTriage({ chiefComplaint: '胸痛', additionalInfo: '疼痛向左肩放射' })
-      expect(mock.post).toHaveBeenCalledWith('/triage/analyze', {
+      expect(mock.post).toHaveBeenCalledWith('/triage/consult', {
         patientId: 42,
         symptoms: '胸痛',
         duration: undefined,
@@ -121,7 +121,7 @@ describe('triage API', () => {
       mock.post.mockResolvedValueOnce(successEnvelope(backendTriageAnalyzeFixture()))
       const result = await consultTriage({ chiefComplaint: '胸痛' }, 1)
       expect(result.id).toBe(8)
-      expect(mock.post).toHaveBeenCalledWith('/triage/analyze', {
+      expect(mock.post).toHaveBeenCalledWith('/triage/consult', {
         patientId: 1,
         symptoms: '胸痛',
         duration: undefined,

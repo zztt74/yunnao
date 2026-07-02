@@ -112,20 +112,6 @@ async function loadRecord() {
   }
 }
 
-/**
- * F3: 把问诊对话记录合并到 presentIllness。
- * 后端 /medical-records/ai-generate 契约暂无专用 dialogue 字段，
- * 选择最少侵入方式：把对话原文按"问诊对话记录"标记合并到现病史尾部，
- * 既不破坏现有结构化字段，又能让 AI 拿到对话上下文。
- */
-function buildPresentIllnessWithDialogue(): string {
-  const base = consultationNotes.value.presentIllness || ''
-  const dialogue = consultationDialogue.value?.trim()
-  if (!dialogue) return base
-  if (!base) return `【问诊对话记录】\n${dialogue}`
-  return `${base}\n\n【问诊对话记录】\n${dialogue}`
-}
-
 /** AI 生成病历草稿（§11.4） */
 async function handleAiGenerate() {
   if (!consultationNotes.value.chiefComplaint?.trim()) {
@@ -138,9 +124,10 @@ async function handleAiGenerate() {
     const res = await generateMedicalRecordDraft({
       encounterId: encounterId.value,
       chiefComplaint: consultationNotes.value.chiefComplaint,
-      presentIllness: buildPresentIllnessWithDialogue(),
+      presentIllness: consultationNotes.value.presentIllness,
       pastHistory: consultationNotes.value.pastHistory,
       physicalExam: consultationNotes.value.physicalExam,
+      consultationTranscript: consultationDialogue.value?.trim() || undefined,
     })
     if (res.aiStatus === 'FAILED') {
       aiFailReason.value = res.aiFailureReason || 'AI 病历生成失败'

@@ -15,7 +15,9 @@ info:
     - 药品模块：list / detail / by-code / by-category / interaction / contraindications（7 个）
     - 排班模块：create / update / cancel / detail / by-doctor / by-department / available（7 个）
     - 挂号模块：create / cancel / detail / by-patient / by-doctor / pending / all（7 个）
-    - 分诊模块：analyze / detail / by-patient（3 个）
+    - 分诊模块：analyze / consult / recommended-doctors / detail / by-patient（5 个）
+    - AI 处方审核兼容接口：prescription/check（1 个）
+    - AI 病历生成接口：medical-records/ai-generate（1 个）
     - 就诊模块：start / wait-exam / resume / complete / cancel / diagnoses / detail（12 个）
 
     契约来源：contracts/30_接口数据与错误契约.md 第11节 + 第12节
@@ -1794,6 +1796,94 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApiResponse'
 
+  /api/triage/consult:
+    post:
+      tags:
+        - 分诊
+      summary: AI 分诊分析（课程兼容路径）
+      description: |
+        课程任务三示例路径。请求体和响应结构与 `/api/triage/analyze` 一致，
+        后端复用同一分诊 Service，保留 `conversationId/history/round` 多轮问诊参数。
+      operationId: consultTriage
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/triage_encounter.yaml#/TriageAnalyzeRequest'
+      responses:
+        '200':
+          description: 分诊分析结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: './schemas/triage_encounter.yaml#/TriageAnalyzeResponse'
+        '403':
+          description: 患者不活跃或无权限
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '404':
+          description: 患者不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/triage/recommended-doctors:
+    get:
+      tags:
+        - 分诊
+      summary: 按推荐科室查询可预约医生
+      description: |
+        用于分诊结果页展示 2-3 个真实可预约医生卡片。数据来自医生与排班表；
+        无可用排班时返回空数组，不返回前端 mock 数据。
+      operationId: getTriageRecommendedDoctors
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: departmentId
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 10
+            default: 3
+      responses:
+        '200':
+          description: 推荐医生列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: './schemas/triage_encounter.yaml#/TriageRecommendedDoctorResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
   /api/triage/{id}:
     get:
       tags:
@@ -2796,6 +2886,165 @@ paths:
                         type: object
         '403':
           description: 非管理员无权访问
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/prescription/check:
+    post:
+      tags:
+        - 处方
+      summary: AI 处方辅助审核（课程兼容路径）
+      description: |
+        课程任务四示例路径。当前实现采用 `prescriptionId` 模式：
+        传入已创建处方 ID，返回该处方已有或降级后的 AI/规则审核结果。
+      operationId: checkPrescription
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - prescriptionId
+              properties:
+                prescriptionId:
+                  type: integer
+                  format: int64
+      responses:
+        '200':
+          description: 处方审核结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          prescriptionId:
+                            type: integer
+                            format: int64
+                          encounterId:
+                            type: integer
+                            format: int64
+                          prescriptionStatus:
+                            type: string
+                            enum: [DRAFT, CONFIRMED, VOIDED]
+                          aiReviewStatus:
+                            type: string
+                            enum: [NOT_REQUESTED, PENDING, REVIEWED, FAILED]
+                          riskLevel:
+                            type: [string, 'null']
+                            enum: [LOW, MEDIUM, HIGH, CONTRAINDICATED, null]
+                          allergyWarnings:
+                            type: array
+                            items:
+                              type: string
+                          interactionWarnings:
+                            type: array
+                            items:
+                              type: string
+                          dosageWarnings:
+                            type: array
+                            items:
+                              type: string
+                          contraindicationWarnings:
+                            type: array
+                            items:
+                              type: string
+                          suggestions:
+                            type: [string, 'null']
+                          summary:
+                            type: [string, 'null']
+                          ruleCheckSummary:
+                            type: [string, 'null']
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '404':
+          description: 处方不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/medical-records/ai-generate:
+    post:
+      tags:
+        - 病历
+      summary: AI 生成病历草稿
+      description: |
+        医生端提交结构化问诊信息和可选 `consultationTranscript` 问诊对话原文，
+        后端调用 AI 生成 `AI_GENERATED` 草稿，正式病历仍需医生确认。
+      operationId: generateMedicalRecordByAI
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - encounterId
+                - chiefComplaint
+              properties:
+                encounterId:
+                  type: integer
+                  format: int64
+                chiefComplaint:
+                  type: string
+                  minLength: 1
+                  maxLength: 500
+                presentIllness:
+                  type: string
+                  maxLength: 4000
+                pastHistory:
+                  type: string
+                  maxLength: 2000
+                physicalExamination:
+                  type: string
+                  maxLength: 2000
+                preliminaryDiagnoses:
+                  type: array
+                  items:
+                    type: string
+                treatmentSuggestion:
+                  type: string
+                  maxLength: 2000
+                consultationTranscript:
+                  type: string
+                  maxLength: 5000
+                  description: 医患问诊对话原文，可为空；用于 AI 提取结构化病历字段
+      responses:
+        '200':
+          description: AI 生成的病历草稿
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '404':
+          description: 就诊不存在
           content:
             application/json:
               schema:

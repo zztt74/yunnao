@@ -123,6 +123,7 @@ describe('medical-record API', () => {
         presentIllness: 'orig present',
         pastHistory: 'orig past',
         physicalExam: 'orig phys',
+        consultationTranscript: '医生：哪里不舒服？患者：咳嗽三天。',
         diagnoses: ['高血压'],
       })
       expect(result.chiefComplaint).toBe('AI 主诉')
@@ -134,6 +135,7 @@ describe('medical-record API', () => {
         pastHistory: 'orig past',
         physicalExamination: 'orig phys',
         preliminaryDiagnoses: ['高血压'],
+        consultationTranscript: '医生：哪里不舒服？患者：咳嗽三天。',
       })
     })
 

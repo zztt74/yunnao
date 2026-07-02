@@ -154,6 +154,46 @@ RecommendedSchedule:
     remainingCount:
       type: integer
 
+TriageRecommendedDoctorResponse:
+  type: object
+  properties:
+    doctorId:
+      type: integer
+      format: int64
+    doctorName:
+      type: string
+    doctorTitle:
+      type: [string, 'null']
+    departmentId:
+      type: integer
+      format: int64
+    departmentName:
+      type: string
+    specialty:
+      type: [string, 'null']
+    availableSchedules:
+      type: array
+      items:
+        $ref: '#/TriageRecommendedDoctorSchedule'
+
+TriageRecommendedDoctorSchedule:
+  type: object
+  properties:
+    scheduleId:
+      type: integer
+      format: int64
+    scheduleDate:
+      type: string
+      format: date
+    startTime:
+      type: string
+      description: 开始时间，后端当前以字符串返回
+    endTime:
+      type: string
+      description: 结束时间，后端当前以字符串返回
+    remainingCount:
+      type: integer
+
 TriageRecordResponse:
   type: object
   properties:

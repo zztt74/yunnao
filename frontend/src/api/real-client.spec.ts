@@ -165,7 +165,7 @@ describe('real API clients', () => {
     expect(apiClientMock.get).toHaveBeenCalledWith('/appointments/patient/42')
   })
 
-  it('maps triage calls to the backend analyze and history contracts', async () => {
+  it('maps triage calls to the backend consult and history contracts', async () => {
     const patient = { id: 42 }
     apiClientMock.get.mockResolvedValueOnce(success(patient))
     apiClientMock.post.mockResolvedValueOnce(
@@ -194,7 +194,7 @@ describe('real API clients', () => {
     )
 
     const triage = await consultTriage({ chiefComplaint: '胸痛', duration: '30分钟' })
-    expect(apiClientMock.post).toHaveBeenCalledWith('/triage/analyze', {
+    expect(apiClientMock.post).toHaveBeenCalledWith('/triage/consult', {
       patientId: 42,
       symptoms: '胸痛',
       duration: '30分钟',
@@ -247,7 +247,7 @@ describe('real API clients', () => {
       isFinal: false,
       followUpQuestion: '是否伴有呼吸困难？',
     })
-    expect(apiClientMock.post).toHaveBeenLastCalledWith('/triage/analyze', {
+    expect(apiClientMock.post).toHaveBeenLastCalledWith('/triage/consult', {
       patientId: 42,
       symptoms: '胸痛伴出汗',
       duration: '30分钟',
