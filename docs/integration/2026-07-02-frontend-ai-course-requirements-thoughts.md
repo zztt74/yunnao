@@ -113,14 +113,12 @@
 
 ## 4. 测试与质量
 
-### 4.1 主仓 `api-admin.spec.ts` 中 1 个日期敏感用例失败
+### 4.1 主仓 `api-admin.spec.ts` 中 1 个日期敏感用例失败（已修）
 
-- 现象：`getAdminAppointments > applies status/patient/doctor/date filters client-side` 在 2026-07-02 之后失败。
+- 现象：`getAdminAppointments > applies status/patient/doctor/date filters client-side` 在非 2026-07-01 日期运行失败。
 - 根因：测试 fixture 中 `bookedAt: '2026-07-01T09:00:00'`，但断言用 `new Date().toISOString().slice(0, 10)` 作为 `date` 参数；日期错位导致 `bookedAt.slice(0, 10) === today` 不成立。
-- 影响：与本次 F1–F4 改动无关；可单独修：
-  - 方案 A：fixture 改为相对当前日期生成（如 `dayjs().format('YYYY-MM-DD') + 'T09:00:00'`）。
-  - 方案 B：测试断言改为对「已过滤集合」做 length / id 断言，不依赖具体日期。
-- 决策方：测试维护方（前端 AI 顺手 PR 也可）。
+- 修复（commit `6d1f1a5`）：将第一条 fixture 的 `bookedAt` 动态改为 `${today}T09:00:00`（与断言 today 保持一致），第二条 fixture 保留过去的硬编码日期（保证被 status 过滤前可被 date 过滤掉）。`const today` 同步上移到 `mockResolvedValueOnce` 之前避免 TDZ。
+- 验证：`npx vitest run tests/front_unit_test/api-admin.spec.ts` 52/52 通过；`npx vitest run` 23/23 文件全绿。
 
 ### 4.2 store-doctor 单测中「缓存引用相等」断言
 
