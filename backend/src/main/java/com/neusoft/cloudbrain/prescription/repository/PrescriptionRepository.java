@@ -10,6 +10,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -27,6 +28,12 @@ public interface PrescriptionRepository extends JpaRepository<Prescription, Long
      * 按患者 ID 查询处方（分页）
      */
     Page<Prescription> findByPatientId(Long patientId, Pageable pageable);
+
+    /**
+     * 按患者 ID 和状态集合查询处方（分页）。
+     * B-HW-02：患者端仅可见 CONFIRMED、VOIDED 等状态，DRAFT 不对 Patients 暴露。
+     */
+    Page<Prescription> findByPatientIdAndStatusIn(Long patientId, Collection<String> statuses, Pageable pageable);
 
     /**
      * 按医生 ID 查询处方（分页）

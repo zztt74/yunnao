@@ -1,6 +1,7 @@
 package com.neusoft.cloudbrain.audit.dto;
 
 import com.neusoft.cloudbrain.audit.entity.AIInvocation;
+import com.neusoft.cloudbrain.audit.entity.AIInvocationAttempt;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
@@ -8,9 +9,8 @@ import java.time.ZoneId;
 /**
  * AI 调用记录响应 DTO
  *
- * 不暴露实体内部的 JPA 注解和乐观锁字段（version），
- * 时间字段统一使用 OffsetDateTime 输出带 +08:00 偏移的 ISO 8601
- * （参见 30_接口数据与错误契约.md 第5节、33_错误码与时间规范.md 第5节）。
+ * B-HW-11：新增 provider / model 字段，取最近一次 attempt 的 provider 和 model，
+ * 前端可直接在列表和详情中展示供应商和模型信息。
  */
 public record AIInvocationResponse(
         Long id,
@@ -18,6 +18,8 @@ public record AIInvocationResponse(
         String businessType,
         Long businessId,
         String status,
+        String provider,
+        String model,
         String errorType,
         String errorMessage,
         Long durationMs,
@@ -29,15 +31,27 @@ public record AIInvocationResponse(
         OffsetDateTime updatedAt
 ) {
     public static AIInvocationResponse from(AIInvocation entity) {
+        return from(entity, null);
+    }
+
+    /**
+     * B-HW-11：传入最近一次 attempt 以填充 provider / model。
+     */
+    public static AIInvocationResponse from(AIInvocation entity, AIInvocationAttempt latestAttempt) {
         if (entity == null) {
             return null;
         }
+        String provider = latestAttempt != null ? latestAttempt.getProvider() : null;
+        String model = latestAttempt != null ? mapModelDisplay(latestAttempt.getModel()) : null;
+
         return new AIInvocationResponse(
                 entity.getId(),
                 entity.getCapability(),
                 entity.getBusinessType(),
                 entity.getBusinessId(),
                 entity.getStatus(),
+                provider,
+                model,
                 entity.getErrorType(),
                 entity.getErrorMessage(),
                 entity.getDurationMs(),
@@ -48,6 +62,20 @@ public record AIInvocationResponse(
                 toOffset(entity.getCreatedAt()),
                 toOffset(entity.getUpdatedAt())
         );
+    }
+
+    /**
+     * B-HW-11：模型名称展示映射。
+     * DeepSeek 的实际 model 标识（如 deepseek-chat）映射为 v4 flash 便于展示。
+     */
+    private static String mapModelDisplay(String model) {
+        if (model == null) {
+            return null;
+        }
+        if (model.startsWith("deepseek")) {
+            return "v4 flash";
+        }
+        return model;
     }
 
     private static OffsetDateTime toOffset(LocalDateTime ldt) {

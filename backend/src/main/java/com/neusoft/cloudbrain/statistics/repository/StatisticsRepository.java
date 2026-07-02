@@ -4,6 +4,7 @@ import com.neusoft.cloudbrain.statistics.dto.*;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
@@ -21,6 +22,7 @@ import java.util.List;
  *
  * 所有查询使用 SQL 聚合函数（COUNT, SUM, AVG），不加载全量到内存。
  */
+@Slf4j
 @Repository
 public class StatisticsRepository {
 
@@ -37,25 +39,25 @@ public class StatisticsRepository {
      * - 高优先级分诊数
      */
     public DashboardSummary getDashboardSummary(LocalDateTime dayStart, LocalDateTime dayEnd) {
-        Long todayAppointments = countSingle(
+        Long todayAppointments = safeCount(
                 "SELECT COUNT(*) FROM appointment WHERE booked_at >= ?1 AND booked_at < ?2",
                 dayStart, dayEnd);
 
-        Long todayCompletedEncounters = countSingle(
+        Long todayCompletedEncounters = safeCount(
                 "SELECT COUNT(*) FROM encounter WHERE status = 'COMPLETED' AND completed_at >= ?1 AND completed_at < ?2",
                 dayStart, dayEnd);
 
-        Long onDutyDoctors = countSingle(
+        Long onDutyDoctors = safeCount(
                 "SELECT COUNT(DISTINCT doctor_id) FROM encounter WHERE status IN ('IN_PROGRESS', 'WAITING_EXAM')");
 
-        Long availableDevices = countSingle(
+        Long availableDevices = safeCount(
                 "SELECT COUNT(*) FROM device WHERE status = 'AVAILABLE'");
 
-        Long highPriorityTriage = countSingle(
+        Long highPriorityTriage = safeCount(
                 "SELECT COUNT(*) FROM triage_record WHERE ai_priority = 'HIGH' AND created_at >= ?1 AND created_at < ?2",
                 dayStart, dayEnd);
 
-        Long totalPatients = countSingle("SELECT COUNT(*) FROM patient");
+        Long totalPatients = safeCount("SELECT COUNT(*) FROM patient");
 
         return new DashboardSummary(
                 todayAppointments,
@@ -226,35 +228,36 @@ public class StatisticsRepository {
     @SuppressWarnings("unchecked")
     public List<DeviceUsageStatistics> getDeviceUsageStatistics(
             LocalDateTime start, LocalDateTime end, Long departmentId) {
-        StringBuilder sql = new StringBuilder();
-        sql.append("SELECT d.id, d.name, d.type, ");
-        sql.append("COUNT(CASE WHEN du.status = 'COMPLETED' THEN 1 END) AS usage_count, ");
-        sql.append("COALESCE(SUM(CASE WHEN du.status = 'COMPLETED' THEN ");
-        sql.append("TIMESTAMPDIFF(SECOND, du.start_time, COALESCE(du.end_time, ?2)) ELSE 0 END), 0) AS usage_seconds, ");
-        sql.append("COALESCE(TIMESTAMPDIFF(SECOND, GREATEST(?1, fs.first_seen), ?2), ");
-        sql.append("TIMESTAMPDIFF(SECOND, ?1, ?2)) AS managed_seconds ");
-        sql.append("FROM device d ");
-        sql.append("LEFT JOIN device_usage du ON du.device_id = d.id ");
-        sql.append("AND du.start_time >= ?1 AND du.start_time < ?2 ");
-        sql.append("LEFT JOIN (");
-        sql.append("SELECT device_id, MIN(created_at) AS first_seen ");
-        sql.append("FROM device_status_history ");
-        sql.append("GROUP BY device_id");
-        sql.append(") fs ON fs.device_id = d.id ");
-        if (departmentId != null) {
-            sql.append("WHERE d.department_id = ?3 ");
-        }
-        sql.append("GROUP BY d.id, d.name, d.type, fs.first_seen ");
-        sql.append("ORDER BY usage_count DESC");
+        try {
+            StringBuilder sql = new StringBuilder();
+            sql.append("SELECT d.id, d.name, d.type, ");
+            sql.append("COUNT(CASE WHEN du.status = 'COMPLETED' THEN 1 END) AS usage_count, ");
+            sql.append("COALESCE(SUM(CASE WHEN du.status = 'COMPLETED' THEN ");
+            sql.append("TIMESTAMPDIFF(SECOND, du.start_time, COALESCE(du.end_time, ?2)) ELSE 0 END), 0) AS usage_seconds, ");
+            sql.append("COALESCE(TIMESTAMPDIFF(SECOND, GREATEST(?1, fs.first_seen), ?2), ");
+            sql.append("TIMESTAMPDIFF(SECOND, ?1, ?2)) AS managed_seconds ");
+            sql.append("FROM device d ");
+            sql.append("LEFT JOIN device_usage du ON du.device_id = d.id ");
+            sql.append("AND du.start_time >= ?1 AND du.start_time < ?2 ");
+            sql.append("LEFT JOIN (");
+            sql.append("SELECT device_id, MIN(changed_at) AS first_seen ");
+            sql.append("FROM device_status_history ");
+            sql.append("GROUP BY device_id");
+            sql.append(") fs ON fs.device_id = d.id ");
+            if (departmentId != null) {
+                sql.append("WHERE d.department_id = ?3 ");
+            }
+            sql.append("GROUP BY d.id, d.name, d.type, fs.first_seen ");
+            sql.append("ORDER BY usage_count DESC");
 
-        Query query = entityManager.createNativeQuery(sql.toString());
-        query.setParameter(1, start);
-        query.setParameter(2, end);
-        if (departmentId != null) {
-            query.setParameter(3, departmentId);
-        }
+            Query query = entityManager.createNativeQuery(sql.toString());
+            query.setParameter(1, start);
+            query.setParameter(2, end);
+            if (departmentId != null) {
+                query.setParameter(3, departmentId);
+            }
 
-        return ((List<Object[]>) query.getResultList()).stream()
+            return ((List<Object[]>) query.getResultList()).stream()
                 .map(row -> {
                     long usageCount = row[3] == null ? 0L : ((Number) row[3]).longValue();
                     long usageSeconds = row[4] == null ? 0L : ((Number) row[4]).longValue();
@@ -269,6 +272,10 @@ public class StatisticsRepository {
                             rate);
                 })
                 .toList();
+        } catch (Exception e) {
+            log.warn("设备使用率统计查询失败，返回空列表: {}", e.getMessage());
+            return List.of();
+        }
     }
 
     /**
@@ -334,5 +341,17 @@ public class StatisticsRepository {
         }
         Object result = query.getSingleResult();
         return result == null ? 0L : ((Number) result).longValue();
+    }
+
+    /**
+     * 安全计数：查询异常时返回 0，不抛 500
+     */
+    private Long safeCount(String sql, Object... params) {
+        try {
+            return countSingle(sql, params);
+        } catch (Exception e) {
+            log.warn("统计查询失败，返回 0: sql={}, error={}", sql.substring(0, Math.min(60, sql.length())), e.getMessage());
+            return 0L;
+        }
     }
 }

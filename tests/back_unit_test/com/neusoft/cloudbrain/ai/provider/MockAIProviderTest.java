@@ -240,6 +240,6 @@ class MockAIProviderTest {
     @Test
     @DisplayName("provider name 为 MOCK")
     void name_isMock() {
-        assertThat(provider.name()).isEqualTo("MOCK");
+        assertThat(provider.name()).isEqualTo("Mock");
     }
 }

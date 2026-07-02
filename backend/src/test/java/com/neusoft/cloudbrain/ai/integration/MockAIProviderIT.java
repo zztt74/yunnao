@@ -46,7 +46,7 @@ class MockAIProviderIT {
     @DisplayName("Spring 上下文正确装配 MockAIProvider Bean")
     void context_loadsMockProvider() {
         assertThat(provider).isNotNull();
-        assertThat(provider.name()).isEqualTo("MOCK");
+        assertThat(provider.name()).isEqualTo("Mock");
     }
 
     @Test

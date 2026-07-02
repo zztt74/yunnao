@@ -71,6 +71,9 @@ public class DoctorService {
         LocalDateTime now = LocalDateTime.now();
         UserAccount userAccount = UserAccount.builder()
                 .username(request.username())
+                .realName(request.name())
+                .phone(blankToNull(request.phone()))
+                .email(blankToNull(request.email()))
                 .passwordHash(passwordEncoder.encode(request.password()))
                 .enabled(true)
                 .accountNonLocked(true)
@@ -262,5 +265,12 @@ public class DoctorService {
                 doctor.getCreatedAt(),
                 doctor.getUpdatedAt()
         );
+    }
+
+    private String blankToNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 }

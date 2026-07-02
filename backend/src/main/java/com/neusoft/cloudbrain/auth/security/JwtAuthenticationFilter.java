@@ -8,7 +8,6 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -31,7 +30,9 @@ import java.util.stream.Collectors;
  * - Token 解析和签名验证
  * - tokenVersion 校验（退出登录后旧 Token 失效）
  * - 账号状态校验（enabled、accountNonLocked）
- * - mustChangePassword 拦截（初始管理员完成密码修改前只能访问修改密码和退出接口）
+ *
+ * 注意：管理员首次登录强制改密功能已按 B-HW-03 要求关闭，
+ * 不再因 mustChangePassword 拦截任何接口。用户仍可通过 /api/auth/change-password 主动改密。
  */
 @Component
 @RequiredArgsConstructor
@@ -39,12 +40,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final UserAccountRepository userAccountRepository;
-
-    /** mustChangePassword=true 时允许访问的路径 */
-    private static final List<String> ALLOWED_PATHS_WHEN_MUST_CHANGE = List.of(
-            "/api/auth/change-password",
-            "/api/auth/logout"
-    );
 
     @Override
     protected void doFilterInternal(@NonNull HttpServletRequest request,
@@ -85,27 +80,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             );
 
                             SecurityContextHolder.getContext().setAuthentication(authentication);
-
-                            // mustChangePassword 拦截
-                            if (Boolean.TRUE.equals(user.getMustChangePassword())) {
-                                String requestPath = request.getRequestURI();
-                                if (!ALLOWED_PATHS_WHEN_MUST_CHANGE.contains(requestPath)) {
-                                    response.setStatus(HttpStatus.FORBIDDEN.value());
-                                    response.setContentType("application/json;charset=UTF-8");
-                                    try {
-                                        response.getWriter().write(
-                                                "{\"code\":\"AUTH_PASSWORD_CHANGE_REQUIRED\"," +
-                                                "\"message\":\"首次登录必须修改密码\"," +
-                                                "\"data\":null," +
-                                                "\"traceId\":\"" + request.getAttribute("traceId") + "\"}"
-                                        );
-                                    } catch (IOException e) {
-                                        logger.error("写入响应失败", e);
-                                    }
-                                    SecurityContextHolder.clearContext();
-                                    return;
-                                }
-                            }
                         }
                     }
                 });

@@ -137,9 +137,9 @@ public class PatientController {
     }
 
     /**
-     * 管理员患者分页查询（B7）
+     * 管理员患者分页查询（B7 / B-HW-06）
      *
-     * 分页查看患者列表，支持姓名模糊、手机号精确、状态筛选。
+     * 分页查看患者列表，支持姓名模糊、手机号精确、状态筛选、账号关键字筛选。
      * 简单关键字搜索仍可用 /search。
      */
     @GetMapping
@@ -147,6 +147,7 @@ public class PatientController {
             @RequestParam(required = false) String name,
             @RequestParam(required = false) String phone,
             @RequestParam(required = false) String status,
+            @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(required = false) Integer pageSize,
             @RequestParam(required = false) Integer size,
@@ -154,7 +155,7 @@ public class PatientController {
         checkAdminPermission();
         int resolvedSize = PageUtils.resolvePageSize(pageSize, size);
         Pageable pageable = PageUtils.toPageable(page, resolvedSize);
-        Page<PatientResponse> response = patientService.listPatients(name, phone, status, pageable);
+        Page<PatientResponse> response = patientService.listPatients(name, phone, status, keyword, pageable);
         return ApiResponse.success(PageResponse.from(response), (String) httpRequest.getAttribute("traceId"));
     }
 

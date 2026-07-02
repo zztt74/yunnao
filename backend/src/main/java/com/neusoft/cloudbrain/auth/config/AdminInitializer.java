@@ -46,7 +46,7 @@ public class AdminInitializer implements CommandLineRunner {
                     .username(adminInitProperties.getUsername())
                     .passwordHash(passwordEncoder.encode(adminInitProperties.getPassword()))
                     .enabled(true)
-                    .mustChangePassword(true)
+                    .mustChangePassword(false)
                     .createdAt(now)
                     .updatedAt(now)
                     .roles(Set.of(adminRole))
@@ -54,7 +54,7 @@ public class AdminInitializer implements CommandLineRunner {
 
             userAccountRepository.save(adminUser);
 
-            log.info("Initial admin account created; password change is required on first login");
+            log.info("Initial admin account created; first-login password change is disabled");
         } else {
             log.info("Admin account already exists; skipping initialization");
         }

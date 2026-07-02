@@ -7,21 +7,25 @@ import com.neusoft.cloudbrain.ai.exception.AIProviderException;
 import com.neusoft.cloudbrain.ai.parser.JsonSchemaParser;
 import com.neusoft.cloudbrain.ai.prompt.PromptManager;
 import com.neusoft.cloudbrain.common.exception.BusinessException;
+import com.neusoft.cloudbrain.triage.dto.ChatMessage;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
 import java.util.function.Function;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -396,6 +400,72 @@ class AITriageServiceImplTest {
 
             TriageAIResult result = service.analyze(request);
 
+            assertThat(result.departmentCode()).isEqualTo("DEPT_INTERNAL");
+        }
+    }
+
+    // ============================================================
+    // 多轮上下文测试（B-HW-07）
+    // ============================================================
+
+    @Nested
+    @DisplayName("多轮上下文（B-HW-07）")
+    class MultiRoundContext {
+
+        @Test
+        @DisplayName("第二轮 provider 输入包含两轮内容，history 透传给 Provider")
+        void analyze_multiRound_shouldIncludeHistoryInInput() {
+            TriageAIRequest request = new TriageAIRequest(
+                    "30-40", "MALE", "伴咳嗽胸闷", "1天", null);
+            List<ChatMessage> history = List.of(
+                    new ChatMessage("USER", "发烧三天"),
+                    new ChatMessage("ASSISTANT", "建议就诊内科"));
+
+            mockRecorderReturn("""
+                    {"departmentCode":"DEPT_INTERNAL","priority":"MEDIUM",
+                    "symptomKeywords":["发热","咳嗽","胸闷"],
+                    "reason":"综合两轮症状提示呼吸道感染可能",
+                    "safetyNotice":"本结果由 AI 辅助生成，仅供辅助参考，最终诊断请由医生确认",
+                    "emergencySuggested":false}""");
+
+            TriageAIResult result = service.analyze(request, history, 2);
+
+            ArgumentCaptor<AIInvocationRecorder.InvocationSpec> captor =
+                    ArgumentCaptor.forClass(AIInvocationRecorder.InvocationSpec.class);
+            verify(recorder).invoke(captor.capture(), any());
+
+            AIInvocationRecorder.InvocationSpec spec = captor.getValue();
+            // sanitizedInput 同时包含本轮与历史主诉
+            assertThat(spec.sanitizedInput()).contains("伴咳嗽胸闷");
+            assertThat(spec.sanitizedInput()).contains("发烧三天");
+            // history 原样透传，供 HttpLLMProvider 拼接多轮 messages
+            assertThat(spec.history()).hasSize(2);
+            assertThat(spec.history().get(0).content()).isEqualTo("发烧三天");
+
+            assertThat(result.departmentCode()).isEqualTo("DEPT_INTERNAL");
+            assertThat(result.symptomKeywords()).contains("发热", "咳嗽", "胸闷");
+        }
+
+        @Test
+        @DisplayName("无 history 时等同单轮，spec.history 为 null")
+        void analyze_multiRound_noHistory_delegatesToSingleRound() {
+            TriageAIRequest request = new TriageAIRequest(
+                    "30-40", "MALE", "发热", "1天", null);
+
+            mockRecorderReturn("""
+                    {"departmentCode":"DEPT_INTERNAL","priority":"MEDIUM",
+                    "symptomKeywords":["发热"],
+                    "reason":"呼吸道感染可能",
+                    "safetyNotice":"本结果由 AI 辅助生成，仅供辅助参考，最终诊断请由医生确认",
+                    "emergencySuggested":false}""");
+
+            TriageAIResult result = service.analyze(request, null, 1);
+
+            ArgumentCaptor<AIInvocationRecorder.InvocationSpec> captor =
+                    ArgumentCaptor.forClass(AIInvocationRecorder.InvocationSpec.class);
+            verify(recorder).invoke(captor.capture(), any());
+
+            assertThat(captor.getValue().history()).isNull();
             assertThat(result.departmentCode()).isEqualTo("DEPT_INTERNAL");
         }
     }

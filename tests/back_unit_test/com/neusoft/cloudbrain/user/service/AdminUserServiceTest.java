@@ -289,7 +289,8 @@ class AdminUserServiceTest {
         adminUserService.resetPassword(1L, new ResetPasswordRequest("NewPassword123!"));
 
         assertThat(user.getPasswordHash()).isEqualTo("newHash");
-        assertThat(user.getMustChangePassword()).isTrue();
+        // B-HW-03：重置密码后不再强制 mustChangePassword
+        assertThat(user.getMustChangePassword()).isFalse();
         assertThat(user.getTokenVersion()).isEqualTo(1L);
         verify(userAccountRepository).save(user);
     }

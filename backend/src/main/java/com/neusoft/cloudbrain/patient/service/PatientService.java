@@ -59,6 +59,8 @@ public class PatientService {
         LocalDateTime now = LocalDateTime.now();
         UserAccount userAccount = UserAccount.builder()
                 .username(request.username())
+                .realName(request.name())
+                .phone(request.phone())
                 .passwordHash(passwordEncoder.encode(request.password()))
                 .enabled(true)
                 .accountNonLocked(true)
@@ -229,24 +231,30 @@ public class PatientService {
     }
 
     /**
-     * 管理员患者分页查询（B7）
+     * 管理员患者分页查询（B7 / B-HW-06）
      *
-     * 多条件分页：姓名模糊、手机号精确、状态。
+     * 多条件分页：姓名模糊、手机号精确、状态、账号关键字。
      * 权限由 Controller 层校验管理员。
      */
     @Transactional(readOnly = true)
-    public Page<PatientResponse> listPatients(String name, String phone, String status, Pageable pageable) {
-        return patientRepository.searchPatients(name, phone, status, pageable)
+    public Page<PatientResponse> listPatients(String name, String phone, String status,
+                                              String keyword, Pageable pageable) {
+        return patientRepository.searchPatients(name, phone, status, keyword, pageable)
                 .map(this::toResponse);
     }
 
     /**
      * 转换为响应 DTO
+     *
+     * B-HW-06：填充 username，便于管理端展示账号并按账号筛选。
      */
     private PatientResponse toResponse(Patient patient) {
+        String username = userAccountRepository.findById(patient.getUserId())
+                .map(UserAccount::getUsername).orElse(null);
         return new PatientResponse(
                 patient.getId(),
                 patient.getUserId(),
+                username,
                 patient.getName(),
                 patient.getGender(),
                 patient.getBirthDate(),

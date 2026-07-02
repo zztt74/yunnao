@@ -155,7 +155,7 @@ class AdminUserControllerTest {
     void update_asAdmin_shouldReturn200() throws Exception {
         loginAs("admin", Set.of("ADMIN"));
         AdminUserResponse response = new AdminUserResponse(
-                1L, "user1", "张三", "13800138000", "user1@example.com",
+                1L, "user1", "张三", "13800138000", "user1@example.com", null,
                 true, true, true, true, false,
                 Set.of("DOCTOR"),
                 LocalDateTime.of(2026, 6, 25, 10, 0, 0),
@@ -193,7 +193,7 @@ class AdminUserControllerTest {
     void changeStatus_asAdmin_shouldReturn200() throws Exception {
         loginAs("admin", Set.of("ADMIN"));
         AdminUserResponse response = new AdminUserResponse(
-                1L, "user1", "张三", "13800138000", "user1@example.com",
+                1L, "user1", "张三", "13800138000", "user1@example.com", null,
                 false, true, true, true, false,
                 Set.of("DOCTOR"),
                 LocalDateTime.of(2026, 6, 25, 10, 0, 0),
@@ -229,7 +229,7 @@ class AdminUserControllerTest {
     void create_asAdmin_shouldReturn200() throws Exception {
         loginAs("admin", Set.of("ADMIN"));
         AdminUserResponse response = new AdminUserResponse(
-                10L, "newuser", null, null, null,
+                10L, "newuser", null, null, null, null,
                 true, true, true, true, false,
                 Set.of("ADMIN"),
                 LocalDateTime.of(2026, 6, 25, 10, 0, 0),

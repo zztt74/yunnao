@@ -126,6 +126,16 @@ public class AuditService {
     }
 
     /**
+     * B-HW-11：获取最近一次 attempt（用于填充 provider/model）。
+     */
+    @Transactional(readOnly = true)
+    public AIInvocationAttempt getLatestAttempt(Long invocationId) {
+        List<AIInvocationAttempt> attempts =
+                aiInvocationAttemptRepository.findByInvocationIdOrderByAttemptIndexDesc(invocationId);
+        return attempts.isEmpty() ? null : attempts.get(0);
+    }
+
+    /**
      * 查询 AI 调用的尝试记录
      */
     @Transactional(readOnly = true)

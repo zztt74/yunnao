@@ -105,8 +105,9 @@ class PrescriptionControllerTest {
     private PrescriptionResponse samplePrescription(Long id, String status, String aiReviewStatus) {
         LocalDateTime now = LocalDateTime.of(2026, 7, 2, 10, 0, 0);
         return new PrescriptionResponse(
-                id, 100L, 200L, 300L, status, aiReviewStatus,
-                now, null, null, null, null, null,
+                id, 100L, 200L, 300L, "陈医生", "内科", "张三",
+                status, aiReviewStatus,
+                now, null, null, null, null, null, now,
                 List.of(sampleItem(1L)), sampleReview(1L, "SAFE"));
     }
 

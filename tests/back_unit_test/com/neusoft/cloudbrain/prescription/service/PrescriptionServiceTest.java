@@ -4,6 +4,7 @@ import com.neusoft.cloudbrain.ai.api.AIPrescriptionReviewService;
 import com.neusoft.cloudbrain.ai.dto.PrescriptionReviewAIRequest;
 import com.neusoft.cloudbrain.ai.dto.PrescriptionReviewAIResult;
 import com.neusoft.cloudbrain.common.exception.BusinessException;
+import com.neusoft.cloudbrain.department.repository.DepartmentRepository;
 import com.neusoft.cloudbrain.doctor.entity.Doctor;
 import com.neusoft.cloudbrain.doctor.repository.DoctorRepository;
 import com.neusoft.cloudbrain.drug.entity.DrugContraindication;
@@ -92,6 +93,8 @@ class PrescriptionServiceTest {
     private DrugDosageRuleRepository drugDosageRuleRepository;
     @Mock
     private DrugContraindicationRepository drugContraindicationRepository;
+    @Mock
+    private DepartmentRepository departmentRepository;
     @Mock
     private AIPrescriptionReviewService aiPrescriptionReviewService;
 

@@ -67,6 +67,13 @@ public class AuditLog {
     @Column(name = "target_id")
     private Long targetId;
 
+    /**
+     * B-HW-10：目标对象名称或摘要（如医生姓名、患者姓名、排班日期、处方编号），
+     * 便于审计展示“谁对哪个对象做了什么”。
+     */
+    @Column(name = "target_name", length = 128)
+    private String targetName;
+
     @Column(length = 1024)
     private String details;
 

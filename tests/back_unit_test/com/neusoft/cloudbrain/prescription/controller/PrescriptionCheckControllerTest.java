@@ -96,16 +96,18 @@ class PrescriptionCheckControllerTest {
                 "请观察不良反应，必要时停药", "审核完成", "确定性规则风险等级：" + riskLevel,
                 now, now);
         return new PrescriptionResponse(
-                id, 100L, 200L, 300L, "DRAFT", "REVIEWED",
-                now, null, null, null, null, null,
+                id, 100L, 200L, 300L, "陈医生", "内科", "张三",
+                "DRAFT", "REVIEWED",
+                now, null, null, null, null, null, now,
                 List.of(sampleItem()), review);
     }
 
     private PrescriptionResponse prescriptionWithoutReview(Long id) {
         LocalDateTime now = LocalDateTime.of(2026, 7, 2, 10, 0, 0);
         return new PrescriptionResponse(
-                id, 100L, 200L, 300L, "DRAFT", "NOT_REQUESTED",
-                now, null, null, null, null, null,
+                id, 100L, 200L, 300L, "陈医生", "内科", "张三",
+                "DRAFT", "NOT_REQUESTED",
+                now, null, null, null, null, null, now,
                 List.of(sampleItem()), null);
     }
 

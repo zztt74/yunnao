@@ -9,10 +9,12 @@ import com.neusoft.cloudbrain.ai.exception.AIProviderException;
 import com.neusoft.cloudbrain.ai.parser.JsonSchemaParser;
 import com.neusoft.cloudbrain.ai.prompt.PromptManager;
 import com.neusoft.cloudbrain.common.exception.BusinessException;
+import com.neusoft.cloudbrain.triage.dto.ChatMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
@@ -43,7 +45,22 @@ public class AITriageServiceImpl implements AITriageService {
 
     @Override
     public TriageAIResult analyze(TriageAIRequest request) {
-        String sanitizedInput = String.format(
+        return analyzeWithHistory(request, null);
+    }
+
+    /**
+     * 多轮分诊（B-HW-07）
+     *
+     * history 中的历史主诉会拼接进 sanitizedInput（便于 Mock 关键词路由覆盖前序症状），
+     * 同时以原形态透传给 Provider（HttpLLMProvider 拼接为多轮 messages）。
+     */
+    @Override
+    public TriageAIResult analyze(TriageAIRequest request, List<ChatMessage> history, Integer round) {
+        return analyzeWithHistory(request, history);
+    }
+
+    private TriageAIResult analyzeWithHistory(TriageAIRequest request, List<ChatMessage> history) {
+        String currentInput = String.format(
                 "主诉: %s; 持续时间: %s; 补充: %s; 年龄区间: %s; 性别: %s",
                 safe(request.chiefComplaint()),
                 safe(request.duration()),
@@ -51,11 +68,16 @@ public class AITriageServiceImpl implements AITriageService {
                 safe(request.ageRange()),
                 safe(request.gender()));
 
+        // B-HW-07：将历史 USER/ASSISTANT 内容拼入 sanitizedInput，
+        // 使 Mock provider 关键词路由也能感知前序症状（如第一轮发烧、第二轮咳嗽胸闷）。
+        String sanitizedInput = appendHistory(currentInput, history);
+
         AIInvocationRecorder.InvocationSpec spec = new AIInvocationRecorder.InvocationSpec(
                 CAPABILITY, CAPABILITY, null, null,
                 sanitizedInput,
                 promptManager.getPrompt(CAPABILITY),
-                promptManager.getPromptVersion(CAPABILITY));
+                promptManager.getPromptVersion(CAPABILITY),
+                history);
 
         try {
             AIInvocationRecorder.InvokeResult<TriageAIResult> result =
@@ -67,6 +89,35 @@ public class AITriageServiceImpl implements AITriageService {
             throw new BusinessException(AIInvalidResponseException.CODE,
                     "AI 分诊响应异常: " + e.getMessage(), 500);
         }
+    }
+
+    /**
+     * 将历史对话以“历史主诉/历史建议”形式追加到当前输入，便于 Mock 关键词路由。
+     */
+    private String appendHistory(String currentInput, List<ChatMessage> history) {
+        if (history == null || history.isEmpty()) {
+            return currentInput;
+        }
+        List<String> userParts = new ArrayList<>();
+        List<String> assistantParts = new ArrayList<>();
+        for (ChatMessage msg : history) {
+            if (msg == null || msg.content() == null || msg.content().isBlank()) {
+                continue;
+            }
+            if ("USER".equals(msg.role())) {
+                userParts.add(msg.content());
+            } else if ("ASSISTANT".equals(msg.role())) {
+                assistantParts.add(msg.content());
+            }
+        }
+        StringBuilder sb = new StringBuilder(currentInput);
+        if (!userParts.isEmpty()) {
+            sb.append("; 历史主诉: ").append(String.join(" | ", userParts));
+        }
+        if (!assistantParts.isEmpty()) {
+            sb.append("; 历史建议: ").append(String.join(" | ", assistantParts));
+        }
+        return sb.toString();
     }
 
     /**

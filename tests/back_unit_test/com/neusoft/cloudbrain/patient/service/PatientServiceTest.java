@@ -346,15 +346,18 @@ class PatientServiceTest {
                 List.of(testPatient),
                 org.springframework.data.domain.PageRequest.of(0, 20),
                 1);
-        when(patientRepository.searchPatients(eq(null), eq(null), eq(null), any()))
+        when(patientRepository.searchPatients(eq(null), eq(null), eq(null), eq(null), any()))
                 .thenReturn(page);
+        when(userAccountRepository.findById(10L))
+                .thenReturn(Optional.of(UserAccount.builder().username("zhangsan").build()));
 
         org.springframework.data.domain.Page<PatientResponse> result =
-                patientService.listPatients(null, null, null,
+                patientService.listPatients(null, null, null, null,
                         org.springframework.data.domain.PageRequest.of(0, 20));
 
         assertThat(result.getContent()).hasSize(1);
         assertThat(result.getContent().get(0).name()).isEqualTo("张三");
+        assertThat(result.getContent().get(0).username()).isEqualTo("zhangsan");
         assertThat(result.getTotalElements()).isEqualTo(1);
     }
 
@@ -365,14 +368,34 @@ class PatientServiceTest {
                 List.of(),
                 org.springframework.data.domain.PageRequest.of(0, 20),
                 0);
-        when(patientRepository.searchPatients(any(), any(), any(), any())).thenReturn(emptyPage);
+        when(patientRepository.searchPatients(any(), any(), any(), any(), any())).thenReturn(emptyPage);
 
         org.springframework.data.domain.Page<PatientResponse> result =
-                patientService.listPatients("不存在", null, null,
+                patientService.listPatients("不存在", null, null, null,
                         org.springframework.data.domain.PageRequest.of(0, 20));
 
         assertThat(result.getContent()).isEmpty();
         assertThat(result.getTotalElements()).isEqualTo(0);
+    }
+
+    @Test
+    @DisplayName("分页查询 - 账号关键字筛选可用")
+    void listPatients_shouldSupportKeywordFilter() {
+        org.springframework.data.domain.Page<Patient> page = new org.springframework.data.domain.PageImpl<>(
+                List.of(testPatient),
+                org.springframework.data.domain.PageRequest.of(0, 20),
+                1);
+        when(patientRepository.searchPatients(eq(null), eq(null), eq(null), eq("zhang"), any()))
+                .thenReturn(page);
+        when(userAccountRepository.findById(10L))
+                .thenReturn(Optional.of(UserAccount.builder().username("zhangsan").build()));
+
+        org.springframework.data.domain.Page<PatientResponse> result =
+                patientService.listPatients(null, null, null, "zhang",
+                        org.springframework.data.domain.PageRequest.of(0, 20));
+
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).username()).isEqualTo("zhangsan");
     }
 
     // ========== 异常情况补充测试 ==========

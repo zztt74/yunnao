@@ -84,7 +84,7 @@ class PatientControllerTest {
     @DisplayName("register - 患者注册成功")
     void register_shouldReturn200() throws Exception {
         PatientResponse patient = new PatientResponse(
-                10L, 100L, "张三", "MALE", LocalDate.of(1990, 1, 1),
+                10L, 100L, "zhangsan", "张三", "MALE", LocalDate.of(1990, 1, 1),
                 "13800000000", "ACTIVE", null, null);
         when(patientService.register(any())).thenReturn(patient);
 
@@ -104,7 +104,7 @@ class PatientControllerTest {
     void getCurrentPatient_shouldReturnMyInfo() throws Exception {
         loginAs("zhangsan", Set.of("PATIENT"));
         PatientResponse patient = new PatientResponse(
-                1L, 1L, "张三", "MALE", LocalDate.of(1990, 1, 1),
+                1L, 1L, "zhangsan", "张三", "MALE", LocalDate.of(1990, 1, 1),
                 "13800000000", "ACTIVE", null, null);
         when(patientService.getCurrentPatient(1L)).thenReturn(patient);
 
@@ -119,7 +119,7 @@ class PatientControllerTest {
     void getById_shouldReturnDetail() throws Exception {
         loginAs("zhangsan", Set.of("PATIENT"));
         PatientResponse patient = new PatientResponse(
-                1L, 1L, "张三", "MALE", LocalDate.of(1990, 1, 1),
+                1L, 1L, "zhangsan", "张三", "MALE", LocalDate.of(1990, 1, 1),
                 "13800000000", "ACTIVE", null, null);
         when(patientService.getPatientById(eq(1L), eq(1L), any())).thenReturn(patient);
 
@@ -134,7 +134,7 @@ class PatientControllerTest {
     void update_shouldReturn200() throws Exception {
         loginAs("zhangsan", Set.of("PATIENT"));
         PatientResponse patient = new PatientResponse(
-                1L, 1L, "张三更新", "FEMALE", LocalDate.of(1990, 1, 1),
+                1L, 1L, "zhangsan", "张三更新", "FEMALE", LocalDate.of(1990, 1, 1),
                 "13900000000", "ACTIVE", null, null);
         when(patientService.updatePatient(eq(1L), any(), eq(1L))).thenReturn(patient);
 
@@ -185,7 +185,7 @@ class PatientControllerTest {
     void search_asAdmin_shouldReturn200() throws Exception {
         loginAs("admin", Set.of("ADMIN"));
         PatientResponse patient = new PatientResponse(
-                1L, 1L, "张三", "MALE", LocalDate.of(1990, 1, 1),
+                1L, 1L, "zhangsan", "张三", "MALE", LocalDate.of(1990, 1, 1),
                 "13800000000", "ACTIVE", null, null);
         when(patientService.searchByName("张")).thenReturn(List.of(patient));
 
@@ -200,7 +200,7 @@ class PatientControllerTest {
         loginAs("admin", Set.of("ADMIN"));
         Page<PatientResponse> page = new PageImpl<>(
                 List.of(), PageRequest.of(0, 20), 0);
-        when(patientService.listPatients(any(), any(), any(), any())).thenReturn(page);
+        when(patientService.listPatients(any(), any(), any(), any(), any())).thenReturn(page);
 
         mockMvc.perform(get("/api/patients"))
                 .andExpect(status().isOk())
@@ -273,7 +273,7 @@ class PatientControllerTest {
         loginAs("admin", Set.of("ADMIN"));
         Page<PatientResponse> page = new PageImpl<>(
                 List.of(), PageRequest.of(1, 20), 0);
-        when(patientService.listPatients(any(), any(), any(), any())).thenReturn(page);
+        when(patientService.listPatients(any(), any(), any(), any(), any())).thenReturn(page);
 
         mockMvc.perform(get("/api/patients").param("page", "2"))
                 .andExpect(status().isOk())

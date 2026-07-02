@@ -90,7 +90,7 @@ class DoctorServiceTest {
     void createDoctor_shouldSucceedWhenDepartmentEnabled() {
         DoctorCreateRequest request = new DoctorCreateRequest(
                 "doctor1", "Password123!", 1L, "李医生",
-                "ATTENDING", "心血管疾病", "博士", 10, "简介");
+                "ATTENDING", "心血管疾病", null, null, "博士", 10, "简介");
 
         when(userAccountRepository.existsByUsername("doctor1")).thenReturn(false);
         when(departmentRepository.findById(1L)).thenReturn(Optional.of(testDepartment));
@@ -121,7 +121,7 @@ class DoctorServiceTest {
         testDepartment.setStatus("DISABLED");
         DoctorCreateRequest request = new DoctorCreateRequest(
                 "doctor1", "Password123!", 1L, "李医生",
-                "ATTENDING", "心血管疾病", null, null, null);
+                "ATTENDING", "心血管疾病", null, null, null, null, null);
 
         when(userAccountRepository.existsByUsername("doctor1")).thenReturn(false);
         when(departmentRepository.findById(1L)).thenReturn(Optional.of(testDepartment));
@@ -137,7 +137,7 @@ class DoctorServiceTest {
     void createDoctor_shouldThrowWhenUsernameDuplicated() {
         DoctorCreateRequest request = new DoctorCreateRequest(
                 "existing", "Password123!", 1L, "李医生",
-                "ATTENDING", null, null, null, null);
+                "ATTENDING", null, null, null, null, null, null);
 
         when(userAccountRepository.existsByUsername("existing")).thenReturn(true);
 

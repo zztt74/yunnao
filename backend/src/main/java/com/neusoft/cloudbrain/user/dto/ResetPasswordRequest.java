@@ -6,7 +6,8 @@ import jakarta.validation.constraints.Size;
 /**
  * 重置密码请求
  *
- * 重置后 mustChangePassword=true（强制下次改密），并递增 tokenVersion 使旧 Token 失效。
+ * 重置后递增 tokenVersion 使旧 Token 失效。
+ * 按 B-HW-03 要求，不再强制下次改密；用户可主动通过 /api/auth/change-password 修改。
  */
 public record ResetPasswordRequest(
         @NotBlank(message = "新密码不能为空")

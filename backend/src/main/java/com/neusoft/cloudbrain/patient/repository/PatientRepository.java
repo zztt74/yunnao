@@ -45,18 +45,23 @@ public interface PatientRepository extends JpaRepository<Patient, Long> {
     /**
      * 管理员患者分页查询（多条件）
      *
-     * @param name   姓名模糊筛选（可空）
-     * @param phone  手机号精确筛选（可空）
-     * @param status 状态筛选（可空）
+     * B-HW-06：keyword 覆盖账号（user_account.username）模糊匹配。
+     *
+     * @param name    姓名模糊筛选（可空）
+     * @param phone   手机号精确筛选（可空）
+     * @param status  状态筛选（可空）
+     * @param keyword 账号关键字模糊筛选（可空）
      */
-    @Query("SELECT p FROM Patient p WHERE " +
+    @Query("SELECT p FROM Patient p LEFT JOIN UserAccount u ON u.id = p.userId WHERE " +
             "(:name IS NULL OR LOWER(p.name) LIKE LOWER(CONCAT('%', :name, '%'))) " +
             "AND (:phone IS NULL OR p.phone = :phone) " +
             "AND (:status IS NULL OR p.status = :status) " +
+            "AND (:keyword IS NULL OR LOWER(u.username) LIKE LOWER(CONCAT('%', :keyword, '%'))) " +
             "ORDER BY p.createdAt DESC")
     Page<Patient> searchPatients(
             @Param("name") String name,
             @Param("phone") String phone,
             @Param("status") String status,
+            @Param("keyword") String keyword,
             Pageable pageable);
 }

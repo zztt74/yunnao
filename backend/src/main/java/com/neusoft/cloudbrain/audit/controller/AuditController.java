@@ -3,6 +3,8 @@ package com.neusoft.cloudbrain.audit.controller;
 import com.neusoft.cloudbrain.audit.dto.AIInvocationAttemptResponse;
 import com.neusoft.cloudbrain.audit.dto.AIInvocationResponse;
 import com.neusoft.cloudbrain.audit.dto.AuditLogResponse;
+import com.neusoft.cloudbrain.audit.entity.AIInvocation;
+import com.neusoft.cloudbrain.audit.entity.AIInvocationAttempt;
 import com.neusoft.cloudbrain.audit.entity.AuditLog;
 import com.neusoft.cloudbrain.audit.service.AuditService;
 import com.neusoft.cloudbrain.common.api.ApiResponse;
@@ -122,7 +124,10 @@ public class AuditController {
         var result = auditService.listInvocations(
                 capability, success, businessType, start, end, pageable);
         List<AIInvocationResponse> items = result.getContent().stream()
-                .map(AIInvocationResponse::from)
+                .map(inv -> {
+                    AIInvocationAttempt latest = auditService.getLatestAttempt(inv.getId());
+                    return AIInvocationResponse.from(inv, latest);
+                })
                 .toList();
         PageResponse<AIInvocationResponse> pageResponse = new PageResponse<>(
                 items,
@@ -139,7 +144,9 @@ public class AuditController {
     @GetMapping("/ai/invocations/{id}")
     public ApiResponse<AIInvocationResponse> getInvocation(
             @PathVariable Long id, HttpServletRequest httpRequest) {
-        return ApiResponse.success(AIInvocationResponse.from(auditService.getInvocation(id)),
+        AIInvocation invocation = auditService.getInvocation(id);
+        AIInvocationAttempt latest = invocation != null ? auditService.getLatestAttempt(id) : null;
+        return ApiResponse.success(AIInvocationResponse.from(invocation, latest),
                 (String) httpRequest.getAttribute("traceId"));
     }
 

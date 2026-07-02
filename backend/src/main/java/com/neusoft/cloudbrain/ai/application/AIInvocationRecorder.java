@@ -10,6 +10,7 @@ import com.neusoft.cloudbrain.audit.entity.AIInvocation;
 import com.neusoft.cloudbrain.audit.entity.AIInvocationAttempt;
 import com.neusoft.cloudbrain.audit.repository.AIInvocationAttemptRepository;
 import com.neusoft.cloudbrain.audit.repository.AIInvocationRepository;
+import com.neusoft.cloudbrain.triage.dto.ChatMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
@@ -18,6 +19,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.function.Function;
 
 /**
@@ -82,7 +84,8 @@ public class AIInvocationRecorder {
                         spec.capability(),
                         spec.sanitizedInput(),
                         spec.systemPrompt(),
-                        spec.promptVersion());
+                        spec.promptVersion(),
+                        spec.history());
 
                 AIProviderResponse response = aiProvider.generate(providerRequest);
                 long attemptDuration = System.currentTimeMillis() - attemptStart;
@@ -283,6 +286,8 @@ public class AIInvocationRecorder {
 
     /**
      * 调用规格
+     *
+     * B-HW-07：history 携带多轮对话上下文，可为空（单轮场景）。
      */
     public record InvocationSpec(
             String capability,
@@ -291,7 +296,16 @@ public class AIInvocationRecorder {
             Long operatorId,
             String sanitizedInput,
             String systemPrompt,
-            String promptVersion) {
+            String promptVersion,
+            List<ChatMessage> history) {
+
+        /**
+         * 兼容旧调用：不指定 history（单轮场景）
+         */
+        public InvocationSpec(String capability, String businessType, Long businessId, Long operatorId,
+                              String sanitizedInput, String systemPrompt, String promptVersion) {
+            this(capability, businessType, businessId, operatorId, sanitizedInput, systemPrompt, promptVersion, null);
+        }
     }
 
     /**

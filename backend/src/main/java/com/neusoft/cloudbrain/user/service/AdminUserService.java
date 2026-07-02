@@ -100,6 +100,8 @@ public class AdminUserService {
                 doctorName,
                 doctorTitle,
                 request.specialty(),
+                blankToNull(request.phone()),
+                blankToNull(request.email()),
                 request.education(),
                 request.experienceYears(),
                 request.introduction());
@@ -174,7 +176,7 @@ public class AdminUserService {
         UserAccount user = userAccountRepository.findById(id)
                 .orElseThrow(UserErrorCode.USER_NOT_FOUND::toException);
         user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
-        user.setMustChangePassword(true);
+        user.setMustChangePassword(false);
         user.setTokenVersion(user.getTokenVersion() + 1);
         user.setUpdatedAt(LocalDateTime.now());
         userAccountRepository.save(user);

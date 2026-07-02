@@ -39,6 +39,9 @@ public class UserAccount {
     @Column(length = 128)
     private String email;
 
+    @Column(name = "last_login_at")
+    private LocalDateTime lastLoginAt;
+
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
 
