@@ -53,7 +53,7 @@ public class AuditLog {
 
     @Column(name = "operator_type", nullable = false, length = 32)
     @Builder.Default
-    private String operatorType = "USER";
+    private String operatorType = "UNKNOWN";
 
     @Column(name = "operator_name", length = 64)
     private String operatorName;

@@ -690,6 +690,8 @@ public class PrescriptionService {
 
     /**
      * 检查处方访问权限
+     *
+     * B-HW-02：PATIENT 角色仅可访问 CONFIRMED/VOIDED 处方，DRAFT 对患者不可见。
      */
     private void checkPrescriptionAccess(Prescription prescription) {
         if (!SecurityUtils.isAuthenticated()) {
@@ -700,6 +702,10 @@ public class PrescriptionService {
             Patient currentPatient = patientRepository.findByUserId(currentUser.userId())
                     .orElseThrow(PrescriptionErrorCode.PATIENT_NOT_FOUND::toException);
             if (!currentPatient.getId().equals(prescription.getPatientId())) {
+                throw PrescriptionErrorCode.PRESCRIPTION_PERMISSION_DENIED.toException();
+            }
+            // B-HW-02：患者不可访问 DRAFT 处方
+            if (!PATIENT_VISIBLE_STATUSES.contains(prescription.getStatus())) {
                 throw PrescriptionErrorCode.PRESCRIPTION_PERMISSION_DENIED.toException();
             }
         }
@@ -733,14 +739,14 @@ public class PrescriptionService {
                 .collect(Collectors.toList());
 
         // B-HW-02：补齐患者端展示字段，避免前端依赖 encounter 上下文补字段
-        String doctorName = doctorRepository.findById(prescription.getDoctorId())
-                .map(Doctor::getName).orElse(null);
+        Doctor doctor = doctorRepository.findById(prescription.getDoctorId()).orElse(null);
+        String doctorName = doctor != null ? doctor.getName() : null;
+        String departmentName = doctor != null
+                ? departmentRepository.findById(doctor.getDepartmentId())
+                        .map(Department::getName).orElse(null)
+                : null;
         String patientName = patientRepository.findById(prescription.getPatientId())
                 .map(Patient::getName).orElse(null);
-        String departmentName = doctorRepository.findById(prescription.getDoctorId())
-                .map(Doctor::getDepartmentId)
-                .flatMap(departmentRepository::findById)
-                .map(Department::getName).orElse(null);
 
         return new PrescriptionResponse(
                 prescription.getId(),

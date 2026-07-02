@@ -152,12 +152,12 @@ public class AuditAspect {
      */
     private String resolveOperatorType(Set<String> roles) {
         if (roles == null || roles.isEmpty()) {
-            return "USER";
+            return "UNKNOWN";
         }
         if (roles.contains("ADMIN")) return "ADMIN";
         if (roles.contains("DOCTOR")) return "DOCTOR";
         if (roles.contains("PATIENT")) return "PATIENT";
-        return "USER";
+        return "UNKNOWN";
     }
 
     /**
@@ -165,12 +165,12 @@ public class AuditAspect {
      */
     private String resolveOperatorType(List<String> roles) {
         if (roles == null || roles.isEmpty()) {
-            return "USER";
+            return "UNKNOWN";
         }
         if (roles.contains("ADMIN")) return "ADMIN";
         if (roles.contains("DOCTOR")) return "DOCTOR";
         if (roles.contains("PATIENT")) return "PATIENT";
-        return "USER";
+        return "UNKNOWN";
     }
 
     /**
