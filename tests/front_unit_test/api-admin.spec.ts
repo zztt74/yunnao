@@ -520,6 +520,7 @@ describe('admin API', () => {
 
   describe('getAdminAppointments', () => {
     it('applies status/patient/doctor/date filters client-side', async () => {
+      const today = new Date().toISOString().slice(0, 10)
       mock.get.mockResolvedValueOnce(
         pageEnvelope(
           [
@@ -533,7 +534,7 @@ describe('admin API', () => {
               departmentName: '内科',
               appointmentNumber: 'A000001',
               status: 'BOOKED',
-              bookedAt: '2026-07-01T09:00:00',
+              bookedAt: `${today}T09:00:00`,
               createdAt: TIMESTAMP,
               updatedAt: TIMESTAMP,
             },
@@ -555,7 +556,6 @@ describe('admin API', () => {
           { total: 2 },
         ),
       )
-      const today = new Date().toISOString().slice(0, 10)
       const result = await getAdminAppointments({
         status: 'BOOKED',
         patientId: 42,
