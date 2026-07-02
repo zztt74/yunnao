@@ -7,7 +7,7 @@ import { getApiClientMock, resetApiClientMock } from './helpers/mock-setup'
 import { pageEnvelope, successEnvelope } from './helpers/api-client-mock'
 import { backendDoctorFixture } from './helpers/fixtures'
 
-import { getCurrentDoctor, getDoctorProfile, getDoctorSchedules, getDoctorTodaySchedules, updateDoctorProfile } from '@/api/doctor'
+import { getCurrentDoctor, getDoctorById, getDoctorProfile, getDoctorSchedules, getDoctorTodaySchedules, updateDoctorProfile } from '@/api/doctor'
 import { useAuthStore } from '@/stores/auth'
 
 const mock = getApiClientMock()
@@ -163,6 +163,25 @@ describe('doctor API', () => {
       const schedules = await getDoctorTodaySchedules()
       expect(schedules).toHaveLength(1)
       expect(schedules[0].scheduleDate).toBe(today)
+    })
+  })
+
+  describe('getDoctorById (F1)', () => {
+    it('fetches and maps a single doctor by id', async () => {
+      mock.get.mockResolvedValueOnce(successEnvelope(backendDoctorFixture({ id: 7, userId: 22, title: 'CHIEF' })))
+      const profile = await getDoctorById(7)
+      expect(mock.get).toHaveBeenCalledWith('/doctors/7')
+      expect(profile.doctorId).toBe(7)
+      expect(profile.title).toBe('主任医师')
+    })
+  })
+
+  describe('getDoctorSchedules with explicit id (F1)', () => {
+    it('uses provided id and skips current doctor lookup', async () => {
+      mock.get.mockResolvedValueOnce(pageEnvelope([]))
+      const schedules = await getDoctorSchedules(7)
+      expect(schedules).toEqual([])
+      expect(mock.get).toHaveBeenCalledWith('/schedules/doctor/7', { params: { page: 1, size: 100 } })
     })
   })
 })

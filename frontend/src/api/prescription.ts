@@ -60,15 +60,32 @@ export async function getMyPrescriptions(params?: {
   toDate?: string
 }): Promise<PrescriptionResponse[]> {
   const patient = await getPatientInfo()
-  const res = await apiClient.get(`/prescriptions/patient/${patient.id}`)
+  return getPatientPrescriptions(patient.id, params)
+}
+
+/**
+ * 按患者 ID 查询处方列表（含草稿/已确认/已作废）。
+ * 默认过滤 DRAFT，医生端如需查看全部可传 includeDraft=true。
+ */
+export async function getPatientPrescriptions(
+  patientId: number,
+  options: {
+    fromDate?: string
+    toDate?: string
+    includeDraft?: boolean
+  } = {},
+): Promise<PrescriptionResponse[]> {
+  const res = await apiClient.get(`/prescriptions/patient/${patientId}`)
   let list = parseApiResponse<PageResponse<BackendPrescriptionResponse>>(res.data).items
     .map((prescription) => mapPrescription(prescription))
-    .filter((prescription) => prescription.status !== 'DRAFT')
-  if (params?.fromDate) {
-    list = list.filter((p) => (p.confirmedAt || p.createdAt) >= params.fromDate!)
+  if (!options.includeDraft) {
+    list = list.filter((p) => p.status !== 'DRAFT')
   }
-  if (params?.toDate) {
-    const end = `${params.toDate}T23:59:59`
+  if (options.fromDate) {
+    list = list.filter((p) => (p.confirmedAt || p.createdAt) >= options.fromDate!)
+  }
+  if (options.toDate) {
+    const end = `${options.toDate}T23:59:59`
     list = list.filter((p) => (p.confirmedAt || p.createdAt) <= end)
   }
   return list.sort(

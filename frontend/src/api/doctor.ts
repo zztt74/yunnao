@@ -84,9 +84,14 @@ export async function updateDoctorProfile(
   return toDoctorProfile(parseApiResponse<BackendDoctorResponse>(res.data))
 }
 
-export async function getDoctorSchedules(): Promise<ScheduleResponse[]> {
-  const doctor = await getCurrentDoctor()
-  const res = await apiClient.get(`/schedules/doctor/${doctor.id}`, {
+export async function getDoctorById(doctorId: number): Promise<DoctorProfile> {
+  const res = await apiClient.get(`/doctors/${doctorId}`)
+  return toDoctorProfile(parseApiResponse<BackendDoctorResponse>(res.data))
+}
+
+export async function getDoctorSchedules(doctorId?: number): Promise<ScheduleResponse[]> {
+  const id = doctorId ?? (await getCurrentDoctor()).id
+  const res = await apiClient.get(`/schedules/doctor/${id}`, {
     params: { page: 1, size: 100 },
   })
   const page = parseApiResponse<PageResponse<ScheduleResponse>>(res.data)

@@ -10,6 +10,7 @@ import {
   confirmPrescription,
   getEncounterPrescription,
   getMyPrescriptions,
+  getPatientPrescriptions,
   getPrescriptionById,
   savePrescriptionDraft,
   voidPrescription,
@@ -67,6 +68,65 @@ describe('prescription API', () => {
         ]),
       )
       const result = await getMyPrescriptions({ fromDate: '2026-07-01', toDate: '2026-07-31' })
+      expect(result.map((p) => p.id)).toEqual([2])
+    })
+  })
+
+  describe('getPatientPrescriptions (F2)', () => {
+    it('filters out DRAFT by default and calls correct endpoint', async () => {
+      mock.get.mockResolvedValueOnce(
+        pageEnvelope([
+          backendPrescriptionFixture({ id: 1, status: 'CONFIRMED' }),
+          backendPrescriptionFixture({ id: 2, status: 'DRAFT' }),
+          backendPrescriptionFixture({ id: 3, status: 'VOIDED' }),
+        ]),
+      )
+      const result = await getPatientPrescriptions(42)
+      expect(mock.get).toHaveBeenCalledWith('/prescriptions/patient/42')
+      expect(result.map((p) => p.id)).toEqual([1, 3])
+    })
+
+    it('includes DRAFT when includeDraft=true', async () => {
+      mock.get.mockResolvedValueOnce(
+        pageEnvelope([
+          backendPrescriptionFixture({ id: 1, status: 'CONFIRMED' }),
+          backendPrescriptionFixture({ id: 2, status: 'DRAFT' }),
+        ]),
+      )
+      const result = await getPatientPrescriptions(42, { includeDraft: true })
+      expect(result.map((p) => p.id)).toEqual([1, 2])
+    })
+
+    it('sorts desc by confirmedAt or createdAt', async () => {
+      mock.get.mockResolvedValueOnce(
+        pageEnvelope([
+          backendPrescriptionFixture({
+            id: 1,
+            status: 'CONFIRMED',
+            confirmedAt: '2026-06-01T10:00:00',
+          }),
+          backendPrescriptionFixture({
+            id: 2,
+            status: 'CONFIRMED',
+            confirmedAt: '2026-06-15T10:00:00',
+          }),
+        ]),
+      )
+      const result = await getPatientPrescriptions(42, { includeDraft: true })
+      expect(result[0].id).toBe(2)
+    })
+
+    it('filters by fromDate/toDate using confirmedAt or createdAt', async () => {
+      mock.get.mockResolvedValueOnce(
+        pageEnvelope([
+          backendPrescriptionFixture({ id: 1, confirmedAt: '2026-06-01T10:00:00' }),
+          backendPrescriptionFixture({ id: 2, confirmedAt: '2026-07-15T10:00:00' }),
+        ]),
+      )
+      const result = await getPatientPrescriptions(42, {
+        fromDate: '2026-07-01',
+        toDate: '2026-07-31',
+      })
       expect(result.map((p) => p.id)).toEqual([2])
     })
   })
