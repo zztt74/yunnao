@@ -41,9 +41,9 @@ node tests/integration/seed-real-clinic-data.mjs
 The seed script creates or reuses local-only integration data for the real
 appointment flow:
 
-- doctor accounts `doctor_internal_seed` and `doctor_emergency_seed`
+- doctor accounts `doctor_chen_mingyuan` and `doctor_guo_haoran`
 - doctor password `DoctorSeed9!2026`
-- patient account `patient_seed`
+- patient account `patient_wang_jiayi`
 - patient password `PatientSeed9!2026`
 - future schedules for the seeded doctors
 - one patient appointment for the internal medicine doctor

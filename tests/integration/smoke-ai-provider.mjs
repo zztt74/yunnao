@@ -1,6 +1,6 @@
 const backendBaseUrl = process.env.BACKEND_BASE_URL ?? 'http://localhost:18080'
 const timeoutMs = Number(process.env.AI_SMOKE_TIMEOUT_MS ?? 30000)
-const username = process.env.AI_SMOKE_USERNAME ?? 'doctor_internal_seed'
+const username = process.env.AI_SMOKE_USERNAME ?? 'doctor_chen_mingyuan'
 const password = process.env.AI_SMOKE_PASSWORD ?? 'DoctorSeed9!2026'
 
 async function request(url, options = {}) {

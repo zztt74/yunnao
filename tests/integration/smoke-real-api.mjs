@@ -50,9 +50,9 @@ const register = await request(`${frontendBaseUrl}/api/patients/register`, {
   body: JSON.stringify({
     username,
     password,
-    name: 'Smoke Patient',
-    gender: 'MALE',
-    birthDate: '1990-01-01',
+    name: `叶安宁${suffix.slice(-2)}`,
+    gender: 'FEMALE',
+    birthDate: '1992-04-16',
     phone,
   }),
 })

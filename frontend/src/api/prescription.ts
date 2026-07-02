@@ -166,7 +166,7 @@ function mapPrescription(
     doctorId: prescription.doctorId,
     doctorName: context?.encounter?.doctorName ?? '',
     departmentName: context?.encounter?.departmentName ?? '',
-    diagnosis: context?.diagnosis || '后端处方契约暂未包含诊断字段',
+    diagnosis: context?.diagnosis || '待医生补充诊断',
     items: prescription.items.map((item) => ({
       id: item.id,
       drugId: item.id,

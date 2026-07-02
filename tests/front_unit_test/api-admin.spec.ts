@@ -643,17 +643,20 @@ describe('admin API', () => {
   })
 
   describe('getAdminPatients', () => {
-    it('returns empty page when keyword is empty', async () => {
+    it('loads active patients when keyword is empty', async () => {
+      mock.get.mockResolvedValueOnce(pageEnvelope([], { page: 1, pageSize: 10, total: 0 }))
       const result = await getAdminPatients({ keyword: '   ' })
       expect(result.total).toBe(0)
       expect(result.list).toEqual([])
-      expect(mock.get).not.toHaveBeenCalled()
+      expect(mock.get).toHaveBeenCalledWith('/patients', {
+        params: { name: undefined, status: 'ACTIVE', page: 1, pageSize: 10 },
+      })
     })
 
     it('returns full page list when results fit on a single page', async () => {
-      // 1. /patients/search
+      // 1. /patients
       mock.get.mockResolvedValueOnce(
-        successEnvelope([{ id: 1, userId: 7, name: '张三', gender: 'MALE', birthDate: '1990-01-01', phone: '13800000000', status: 'ACTIVE', createdAt: TIMESTAMP, updatedAt: TIMESTAMP }]),
+        pageEnvelope([{ id: 1, userId: 7, name: '张三', gender: 'MALE', birthDate: '1990-01-01', phone: '13800000000', status: 'ACTIVE', createdAt: TIMESTAMP, updatedAt: TIMESTAMP }], { page: 1, pageSize: 10, total: 1 }),
       )
       // 2. /patients/1 (from getPatientDetail)
       mock.get.mockResolvedValueOnce(
@@ -676,6 +679,9 @@ describe('admin API', () => {
       const result = await getAdminPatients({ keyword: '张', page: 1, pageSize: 10 })
       expect(result.total).toBe(1)
       expect(result.list).toHaveLength(1)
+      expect(mock.get).toHaveBeenNthCalledWith(1, '/patients', {
+        params: { name: '张', status: 'ACTIVE', page: 1, pageSize: 10 },
+      })
     })
   })
 
@@ -906,11 +912,11 @@ describe('admin API', () => {
 
   describe('getAdminPatients fallback', () => {
     it('falls back to mapPatientBasic when getPatientDetail throws', async () => {
-      // 1. /patients/search
+      // 1. /patients
       mock.get.mockResolvedValueOnce(
-        successEnvelope([
+        pageEnvelope([
           { id: 1, userId: 7, name: '张三', gender: 'MALE', birthDate: '1990-01-01', phone: '13800000000', status: 'ACTIVE', createdAt: TIMESTAMP, updatedAt: TIMESTAMP },
-        ]),
+        ], { total: 1 }),
       )
       // 2. /patients/1 (getPatientDetail fails)
       mock.get.mockRejectedValueOnce(new Error('profile missing'))
@@ -923,11 +929,9 @@ describe('admin API', () => {
 
     it('slices the result list when page size is exceeded', async () => {
       mock.get.mockResolvedValueOnce(
-        successEnvelope([
-          { id: 1, userId: 7, name: 'A', gender: 'MALE', birthDate: '1990-01-01', phone: '1', status: 'ACTIVE', createdAt: TIMESTAMP, updatedAt: TIMESTAMP },
-          { id: 2, userId: 8, name: 'B', gender: 'MALE', birthDate: '1990-01-01', phone: '2', status: 'ACTIVE', createdAt: TIMESTAMP, updatedAt: TIMESTAMP },
+        pageEnvelope([
           { id: 3, userId: 9, name: 'C', gender: 'MALE', birthDate: '1990-01-01', phone: '3', status: 'ACTIVE', createdAt: TIMESTAMP, updatedAt: TIMESTAMP },
-        ]),
+        ], { page: 2, pageSize: 2, total: 3 }),
       )
       mock.get.mockRejectedValue(new Error('profile missing'))
       const result = await getAdminPatients({ keyword: 'x', page: 2, pageSize: 2 })

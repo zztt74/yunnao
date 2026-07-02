@@ -251,7 +251,7 @@ describe('prescription API', () => {
         diagnosis: '',
         items: [],
       })
-      expect(saved.diagnosis).toContain('后端处方契约暂未包含诊断字段')
+      expect(saved.diagnosis).toContain('待医生补充诊断')
     })
   })
 

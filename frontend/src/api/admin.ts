@@ -773,16 +773,19 @@ export async function getAdminPatients(query?: {
   pageSize?: number
 }): Promise<PageResult<PatientDetailResponse>> {
   const keyword = query?.keyword?.trim()
-  if (!keyword) {
-    return emptyPage(query)
-  }
-
-  const res = await apiClient.get('/patients/search', {
-    params: { name: keyword },
+  const page = query?.page ?? 1
+  const pageSize = query?.pageSize ?? 10
+  const res = await apiClient.get('/patients', {
+    params: {
+      name: keyword || undefined,
+      status: 'ACTIVE',
+      page,
+      pageSize,
+    },
   })
-  const patients = parseApiResponse<PatientResponse[]>(res.data)
+  const patientsPage = parseApiResponse<PageResponse<PatientResponse>>(res.data)
   const details = await Promise.all(
-    patients.map(async (patient) => {
+    patientsPage.items.map(async (patient) => {
       try {
         return await getPatientDetail(patient.id)
       } catch {
@@ -790,14 +793,11 @@ export async function getAdminPatients(query?: {
       }
     }),
   )
-  const page = query?.page ?? 1
-  const pageSize = query?.pageSize ?? 10
-  const start = (page - 1) * pageSize
   return {
-    list: details.slice(start, start + pageSize),
-    total: details.length,
-    page,
-    pageSize,
+    list: details,
+    total: patientsPage.total,
+    page: patientsPage.page,
+    pageSize: patientsPage.pageSize,
   }
 }
 

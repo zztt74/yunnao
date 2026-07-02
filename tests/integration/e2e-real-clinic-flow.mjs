@@ -7,6 +7,8 @@ const envPath = path.join(repoRoot, '.env')
 const backendBaseUrl = process.env.BACKEND_BASE_URL ?? 'http://localhost:18080'
 const seedAdminPassword = process.env.LOCAL_SEED_ADMIN_PASSWORD ?? 'AdminSeed9!2026'
 const doctorPassword = process.env.LOCAL_SEED_DOCTOR_PASSWORD ?? 'DoctorSeed9!2026'
+const internalDoctorUsername = process.env.DEMO_INTERNAL_DOCTOR_USERNAME ?? 'doctor_chen_mingyuan'
+const internalDoctorName = process.env.DEMO_INTERNAL_DOCTOR_NAME ?? '陈明远'
 const timeoutMs = Number(process.env.E2E_TIMEOUT_MS ?? 20000)
 
 function readDotenv(file) {
@@ -141,9 +143,9 @@ async function getSeedDoctor(adminToken) {
   const doctors = await request(`${backendBaseUrl}/api/doctors?page=1&pageSize=100`, {
     headers: authHeaders(adminToken),
   })
-  const doctor = unwrapPage(doctors.data).find((item) => item.name === '联调内科医生')
+  const doctor = unwrapPage(doctors.data).find((item) => item.name === internalDoctorName)
   if (!doctor) {
-    throw new Error('联调内科医生不存在，请先运行 seed-real-clinic-data.mjs')
+    throw new Error(`${internalDoctorName} 不存在，请先运行 seed-real-clinic-data.mjs 或应用 V074 迁移`)
   }
   return doctor
 }
@@ -187,9 +189,9 @@ async function registerPatient(prefix, suffix) {
     body: JSON.stringify({
       username,
       password,
-      name: `联调患者${suffix.slice(-4)}`,
-      gender: 'MALE',
-      birthDate: '1991-05-10',
+      name: prefix.includes('other') ? `许安然${suffix.slice(-2)}` : `沈嘉禾${suffix.slice(-2)}`,
+      gender: prefix.includes('other') ? 'FEMALE' : 'MALE',
+      birthDate: prefix.includes('other') ? '1993-09-12' : '1991-05-10',
       phone,
     }),
   })
@@ -214,7 +216,7 @@ const admin = await getAdminToken()
 await request(`${backendBaseUrl}/actuator/health`)
 
 const doctor = await getSeedDoctor(admin.token)
-const doctorLogin = await login('doctor_internal_seed', doctorPassword)
+const doctorLogin = await login(internalDoctorUsername, doctorPassword)
 const primaryPatient = await registerPatient('flow_patient', suffix)
 const otherPatient = await registerPatient('flow_other_patient', `${suffix}9`)
 const schedule = await ensureSchedule(admin.token, doctor, suffix)
@@ -434,7 +436,7 @@ const prescription = await request(`${backendBaseUrl}/api/prescriptions`, {
     items: [
       {
         drugCode: 'DRG_004',
-        drugName: '云脑止咳糖浆',
+        drugName: '复方甘草口服溶液',
         dosage: '10ml',
         dosageValue: 10,
         frequency: 'TID',
@@ -542,7 +544,7 @@ const result = {
   flow: 'SUCCESS',
   accounts: {
     admin: admin.username,
-    doctor: 'doctor_internal_seed',
+    doctor: internalDoctorUsername,
     patient: primaryPatient.username,
   },
   ids: {

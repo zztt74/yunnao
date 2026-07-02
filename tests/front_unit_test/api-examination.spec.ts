@@ -190,7 +190,7 @@ describe('examination API', () => {
       expect(mock.post).toHaveBeenCalledTimes(2)
       expect(mock.post).toHaveBeenNthCalledWith(1, '/examinations/100/start')
       expect(mock.post).toHaveBeenNthCalledWith(2, '/examinations/100/result', {
-        resultText: '已完成检查检验，结果录入来自联调模拟人员。',
+        resultText: '检查已完成，报告结果由检查科室录入。',
         normalRange: '参考范围见原始报告',
         conclusion: '未见明显异常',
         abnormalFlag: 'NORMAL',

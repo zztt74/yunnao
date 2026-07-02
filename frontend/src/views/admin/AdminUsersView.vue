@@ -35,7 +35,7 @@ const departments = ref<DepartmentResponse[]>([])
 
 // 筛选
 const filterRole = ref<UserRole | 'ALL'>('ALL')
-const filterStatus = ref<UserStatus | 'ALL'>('ALL')
+const filterStatus = ref<UserStatus | 'ALL'>('ENABLED')
 const keyword = ref('')
 
 const filteredUsers = computed(() => {

@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process'
 const repoRoot = path.resolve(import.meta.dirname, '..', '..')
 const backendBaseUrl = process.env.BACKEND_BASE_URL ?? 'http://localhost:18080'
 const timeoutMs = Number(process.env.AI_FAULT_TIMEOUT_MS ?? 15000)
-const username = process.env.AI_FAULT_USERNAME ?? 'doctor_internal_seed'
+const username = process.env.AI_FAULT_USERNAME ?? 'doctor_chen_mingyuan'
 const password = process.env.AI_FAULT_PASSWORD ?? 'DoctorSeed9!2026'
 
 function authHeaders(token) {

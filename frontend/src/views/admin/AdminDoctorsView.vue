@@ -31,7 +31,7 @@ const departments = ref<DepartmentResponse[]>([])
 
 // 筛选
 const filterDeptId = ref<number | ''>('')
-const filterStatus = ref<DoctorManageStatus | ''>('')
+const filterStatus = ref<DoctorManageStatus | ''>('ACTIVE')
 const keyword = ref('')
 
 const filteredDoctors = computed(() => {

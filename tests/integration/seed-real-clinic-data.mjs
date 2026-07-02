@@ -6,6 +6,7 @@ const envPath = path.join(repoRoot, '.env')
 const backendBaseUrl = process.env.BACKEND_BASE_URL ?? 'http://localhost:18080'
 const seedAdminPassword = process.env.LOCAL_SEED_ADMIN_PASSWORD ?? 'AdminSeed9!2026'
 const doctorPassword = process.env.LOCAL_SEED_DOCTOR_PASSWORD ?? 'DoctorSeed9!2026'
+const patientPassword = process.env.LOCAL_SEED_PATIENT_PASSWORD ?? 'PatientSeed9!2026'
 const timeoutMs = Number(process.env.SEED_TIMEOUT_MS ?? 15000)
 
 function readDotenv(file) {
@@ -150,10 +151,10 @@ async function ensurePatient(username, password) {
       body: JSON.stringify({
         username,
         password,
-        name: '联调患者',
-        gender: 'MALE',
-        birthDate: '1992-06-01',
-        phone: '13900090629',
+        name: '王佳怡',
+        gender: 'FEMALE',
+        birthDate: '1994-03-18',
+        phone: '13910230001',
       }),
     })
     const loginData = await login(username, password)
@@ -193,26 +194,26 @@ function addDays(date, days) {
 const admin = await getAdminToken()
 const doctorsToSeed = [
   {
-    username: 'doctor_internal_seed',
+    username: 'doctor_chen_mingyuan',
     password: doctorPassword,
     departmentId: 1,
-    name: '联调内科医生',
+    name: '陈明远',
     title: 'ATTENDING',
-    specialty: '常见内科疾病、慢病复诊',
-    education: '本科',
-    experienceYears: 8,
-    introduction: '本地联调用医生账号。',
+    specialty: '发热、咳嗽、慢性胃炎、高血压等内科常见病诊疗',
+    education: '硕士研究生',
+    experienceYears: 10,
+    introduction: '长期承担门诊内科首诊和慢病随访工作，重视用药安全、检查指征和患者复诊计划。',
   },
   {
-    username: 'doctor_emergency_seed',
+    username: 'doctor_guo_haoran',
     password: doctorPassword,
     departmentId: 7,
-    name: '联调急诊医生',
-    title: 'RESIDENT',
-    specialty: '急诊初筛、常见急症处理',
+    name: '郭浩然',
+    title: 'ATTENDING',
+    specialty: '胸痛、急腹症、外伤初筛、急诊分级与危重症识别',
     education: '本科',
-    experienceYears: 5,
-    introduction: '本地联调用医生账号。',
+    experienceYears: 11,
+    introduction: '长期参与急诊分诊和急危重症初筛，擅长识别胸痛、外伤、急腹症等高风险主诉。',
   },
 ]
 
@@ -231,7 +232,7 @@ for (const { doctor } of doctorResults) {
   }
 }
 
-const patient = await ensurePatient('patient_seed', 'PatientSeed9!2026')
+const patient = await ensurePatient('patient_wang_jiayi', patientPassword)
 const patientMe = await getCurrentPatient(patient.token)
 const now = Date.now()
 const firstInternalSchedule = scheduleResults
@@ -250,8 +251,8 @@ console.log(JSON.stringify({
   seededDoctorPassword: doctorPassword,
   doctorsCreated: doctorResults.filter((item) => item.created).length,
   schedulesCreated: scheduleResults.filter((item) => item.created).length,
-  patientUsername: 'patient_seed',
-  patientPassword: 'PatientSeed9!2026',
+  patientUsername: 'patient_wang_jiayi',
+  patientPassword,
   patientCreated: patient.created,
   appointmentCreated: appointmentResult?.created ?? false,
   appointmentNumber: appointmentResult?.appointment?.appointmentNumber ?? null,
